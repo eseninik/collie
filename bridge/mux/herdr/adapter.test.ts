@@ -328,3 +328,46 @@ describe("pasteBlock: one bracketed paste, framed by the adapter", () => {
     expect(fake.sent).toEqual([["w1:p1", "\u001b[200~a[201~b201~c\nd\u001b[201~"]]);
   });
 });
+
+describe("readGrid viewport: the live screen, whatever the operator's scroll", () => {
+  /** The seeded agent pane and the two rows its live screen holds. */
+  async function agentPane(fake: FakeHerdr): Promise<{ id: string; live: string[] }> {
+    const id = (await fake.listPanes())[0]!.pane_id;
+    return { id, live: ["$ shell in /home/dev/collie", `pane ${id} on screen`] };
+  }
+
+  test("an unscrolled pane reads its visible screen", async () => {
+    const fake = new FakeHerdr();
+    const { id, live } = await agentPane(fake);
+    const read = await new HerdrMux(fake, () => []).readGrid(id, { scope: "viewport", lines: 120, styling: "strip" });
+    expect(read.ok && read.value.text.split("\n")).toEqual(live);
+  });
+
+  test("a pane scrolled up on the desktop still reads the live screen, not the old rows in view", async () => {
+    const fake = new FakeHerdr();
+    const { id, live } = await agentPane(fake);
+    fake.scrollPane(id, 5);
+    const mux = new HerdrMux(fake, () => []);
+    // The live screen is the bottom of the read; a screen the program has not filled may carry
+    // scrollback rows above it, never more rows than the viewport holds (24 in the fake).
+    const stripped = await mux.readGrid(id, { scope: "viewport", lines: 120, styling: "strip" });
+    const rows = stripped.ok ? stripped.value.text.split("\n") : [];
+    expect(rows.slice(-2)).toEqual(live);
+    expect(rows.length).toBe(24);
+    expect(stripped.ok && stripped.value.text).not.toContain("\u001b[");
+    const preserved = await mux.readGrid(id, { scope: "viewport", lines: 120, styling: "preserve" });
+    expect(preserved.ok && preserved.value.text.split("\n").at(-1)).toContain(`pane ${id} on screen`);
+  });
+
+  test("a pane record that cannot be read leaves the visible read", async () => {
+    class NoGet extends FakeHerdr {
+      override async getPane(): Promise<never> {
+        throw new Error("herdr pane.get: unknown variant");
+      }
+    }
+    const fake = new NoGet();
+    const { id, live } = await agentPane(fake);
+    const read = await new HerdrMux(fake, () => []).readGrid(id, { scope: "viewport", lines: 120, styling: "strip" });
+    expect(read.ok && read.value.text.split("\n")).toEqual(live);
+  });
+});
