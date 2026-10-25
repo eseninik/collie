@@ -166,13 +166,18 @@ export class FakeHerdr implements HerdrRpc {
     await Promise.resolve();
   }
 
-  /** The pane's foreground group becomes these processes. */
-  /** The operator scrolls a pane's viewport up `offset` rows (0 is the live bottom), as `pane.scroll` does. */
+  /**
+   * The operator scrolls a pane's viewport up `offset` rows (0 is the live bottom), as `pane.scroll`
+   * does: never past the top of the scrollback.
+   */
   scrollPane(paneId: string, offset: number): void {
     const pane = this.pane("pane.scroll", paneId);
-    if (pane.scroll) pane.scroll = { ...pane.scroll, offset_from_bottom: offset };
+    if (!pane.scroll) throw new Error(`fake herdr: ${paneId} has no scroll geometry`);
+    const history = this.screens.get(paneId)?.history.length ?? 0;
+    pane.scroll = { ...pane.scroll, offset_from_bottom: Math.max(0, Math.min(offset, history)) };
   }
 
+  /** The pane's foreground group becomes these processes. */
   setProcesses(paneId: string, processes: WireForegroundProcess[]): void {
     this.processes.set(paneId, processes);
   }
