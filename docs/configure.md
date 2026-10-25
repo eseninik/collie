@@ -869,45 +869,6 @@ config root, switchable from the header. Setting `COLLIE_MULTI_SESSION=off` serv
 Herdr session. Every discovered Herdr session is accessible through the same URL, including private or sandbox
 sessions. [Security](security.md) lists this behavior as a sharp edge.
 
-## Usage windows
-
-The dots beside the model show your 5-hour and 7-day limits for Claude and Codex, with no setup.
-
-```bash
-# turn every source off
-COLLIE_ACCOUNT_WINDOWS=0
-# turn on opencode and grok too, or name the ones you want
-COLLIE_ACCOUNT_WINDOWS=all
-COLLIE_ACCOUNT_WINDOWS=claude,codex
-```
-
-Collie reads your Claude login file on this machine and asks Anthropic's usage endpoint, the same
-call Claude Code's /usage makes; nothing of the login is stored or sent elsewhere. Collie asks only
-while a pane of that harness is open, and it skips a login file that others may read (anything
-looser than `0600`) and a login that has expired. Codex sends no token: it reads its own files.
-
-| form | what it turns on |
-| --- | --- |
-| unset, `1`, `on`, `true`, `yes` | the default set: `claude` and `codex` |
-| `0`, `off`, `false`, `no` | nothing: no login or session file is read and nothing is asked |
-| `all` | every source: `claude`, `codex`, `opencode` and `grok` |
-| `claude,codex` | the harnesses you name, in any case and with spaces |
-
-An id Collie does not know is dropped with a warning, and only the ids it knows are on, so a typo
-never turns on a source you did not name. In the config file, `[bridge] account_windows` takes
-`true` or `false`, a string with the same forms, or an array such as `["claude", "codex"]`.
-
-Each source reads a different thing.
-
-- **Claude, on by default.** Collie reads `~/.claude/.credentials.json`, or `$CLAUDE_CONFIG_DIR/.credentials.json`, and asks `api.anthropic.com`.
-- **Codex, on by default.** Collie reads no login and asks nobody. On a ChatGPT login Codex writes the windows into its own session files (`$CODEX_HOME/sessions`, or `~/.codex/sessions`), and Collie reads the end of the newest files from the last two hours. A Codex on an API key has no windows to show.
-- **OpenCode Go, off by default.** When you turn it on, Collie reads the `opencode-go` entry of OpenCode's login store (`~/.local/share/opencode/auth.json`, or under `$XDG_DATA_HOME`) and asks `opencode.ai`. With no Go entry it asks nothing.
-- **Grok, off by default.** When you turn it on, Collie reads the login `grok login` keeps (`~/.grok/auth.json`, or under `$GROK_HOME`) and asks `cli-chat-proxy.grok.com` for your credits.
-
-> **Note.** OpenCode Go and Grok follow the shape other tools use for these endpoints, and no live account has checked them yet. That is why they are off until you name them. pi and OMP show no windows here yet.
-
-`collie doctor` shows every source in its `account-windows` row: on or off, the file it reads and the host it asks. [Terminals](multiplexers.md#collie-writes-hooks-into-claudes-own-settings) has the statusLine road.
-
 ### Your own session labels
 
 Give a session a label of your own in `sessions.toml`, next to `keys.toml`:
@@ -959,6 +920,45 @@ A launcher row with no `cwd`, or a new space with an empty Where field, opens in
 folder. A row's own `cwd`, a folder typed in Where, and a pane's own folder all still win. The folder
 is absolute or starts with `~/`; a row with a `..` segment or a control character is dropped and
 logged. A folder that is not on disk at launch time falls back to home.
+
+## Usage windows
+
+The dots beside the model show your 5-hour and 7-day limits for Claude and Codex, with no setup.
+
+```bash
+# turn every source off
+COLLIE_ACCOUNT_WINDOWS=0
+# turn on opencode and grok too, or name the ones you want
+COLLIE_ACCOUNT_WINDOWS=all
+COLLIE_ACCOUNT_WINDOWS=claude,codex
+```
+
+Collie reads your Claude login file on this machine and asks Anthropic's usage endpoint, the same
+call Claude Code's /usage makes; nothing of the login is stored or sent elsewhere. Collie asks only
+while a pane of that harness is open, and it skips a login file that others may read (anything
+looser than `0600`) and a login that has expired. Codex sends no token: it reads its own files.
+
+| form | what it turns on |
+| --- | --- |
+| unset, `1`, `on`, `true`, `yes` | the default set: `claude` and `codex` |
+| `0`, `off`, `false`, `no` | nothing: no login or session file is read and nothing is asked |
+| `all` | every source: `claude`, `codex`, `opencode` and `grok` |
+| `claude,codex` | the harnesses you name, in any case and with spaces |
+
+An id Collie does not know is dropped with a warning, and only the ids it knows are on, so a typo
+never turns on a source you did not name. In the config file, `[bridge] account_windows` takes
+`true` or `false`, a string with the same forms, or an array such as `["claude", "codex"]`.
+
+Each source reads a different thing.
+
+- **Claude, on by default.** Collie reads `~/.claude/.credentials.json`, or `$CLAUDE_CONFIG_DIR/.credentials.json`, and asks `api.anthropic.com`.
+- **Codex, on by default.** Collie reads no login and asks nobody. On a ChatGPT login Codex writes the windows into its own session files (`$CODEX_HOME/sessions`, or `~/.codex/sessions`), and Collie reads the end of the newest files from the last two hours. A Codex on an API key has no windows to show.
+- **OpenCode Go, off by default.** When you turn it on, Collie reads the `opencode-go` entry of OpenCode's login store (`~/.local/share/opencode/auth.json`, or under `$XDG_DATA_HOME`) and asks `opencode.ai`. With no Go entry it asks nothing.
+- **Grok, off by default.** When you turn it on, Collie reads the login `grok login` keeps (`~/.grok/auth.json`, or under `$GROK_HOME`) and asks `cli-chat-proxy.grok.com` for your credits.
+
+> **Note.** OpenCode Go and Grok follow the shape other tools use for these endpoints, and no live account has checked them yet. That is why they are off until you name them. pi and OMP show no windows here yet.
+
+`collie doctor` shows every source in its `account-windows` row: on or off, the file it reads and the host it asks. [Terminals](multiplexers.md#collie-writes-hooks-into-claudes-own-settings) has the statusLine road.
 
 ## Dark mode / light mode
 
