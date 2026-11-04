@@ -3104,14 +3104,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 ? direct.onKeyDown
                 : (e) => {
                     if (e.key !== "Enter") return;
-                    if (e.metaKey || e.ctrlKey) {
-                      e.preventDefault();
-                      onSendClick();
-                    } else if (enterSends && !e.shiftKey && !e.nativeEvent.isComposing) {
-                      // A device with a mouse has Shift for the newline; a phone's keyboard does not.
-                      e.preventDefault();
-                      if (hasDraft) onSendClick();
-                    }
+                    const chord = e.metaKey || e.ctrlKey;
+                    // A device with a mouse has Shift for the newline; a phone's keyboard does not.
+                    if (!chord && (!enterSends || e.shiftKey || e.nativeEvent.isComposing)) return;
+                    e.preventDefault();
+                    // A held key repeats: its repeat must not be the second press a destructive line asks for.
+                    if (!e.repeat && (chord || hasDraft)) onSendClick();
                   }
             }
             onPaste={onPasteFile}

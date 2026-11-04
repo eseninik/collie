@@ -3410,6 +3410,21 @@ describe("Composer — the composer is one box", () => {
       expect(field()).toHaveValue("");
     });
 
+    it("a held Enter never confirms a destructive line; a second press does", async () => {
+      const user = userEvent.setup();
+      const props = renderComposer();
+      await user.type(field(), "rm -rf node_modules");
+      fireEvent.keyDown(field(), { key: "Enter" });
+      expect(await screen.findByRole("button", { name: /really send/i })).toBeInTheDocument();
+      expect(fireEvent.keyDown(field(), { key: "Enter", repeat: true })).toBe(false);
+      expect(screen.getByRole("button", { name: /really send/i })).toBeInTheDocument();
+      expect(field()).toHaveValue("rm -rf node_modules");
+      expect(props.onSent).not.toHaveBeenCalled();
+
+      fireEvent.keyDown(field(), { key: "Enter" });
+      await waitFor(() => expect(props.onSent).toHaveBeenCalledTimes(1));
+    });
+
     it("still sends on Ctrl+Enter", async () => {
       const user = userEvent.setup();
       const props = renderComposer();
