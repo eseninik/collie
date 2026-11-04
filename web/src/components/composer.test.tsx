@@ -3280,6 +3280,57 @@ describe("Composer — the composer is one box", () => {
     expect(props.onSent).toHaveBeenCalled();
   });
 
+  // A laptop has a Shift key for the newline, so its Enter sends. A phone's keyboard does not (above).
+  describe("with a mouse and a keyboard", () => {
+    beforeEach(() => {
+      vi.stubGlobal("matchMedia", (query: string) => ({
+        matches: query === "(pointer: fine)",
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }));
+    });
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("sends on a bare Enter", async () => {
+      const user = userEvent.setup();
+      const props = renderComposer();
+      await user.type(field(), "looks good");
+      expect(fireEvent.keyDown(field(), { key: "Enter" })).toBe(false);
+      await waitFor(() => expect(field()).toHaveValue(""));
+      expect(props.onSent).toHaveBeenCalled();
+    });
+
+    it("leaves Shift+Enter and an Enter that confirms a composition to the textarea", async () => {
+      const user = userEvent.setup();
+      const props = renderComposer();
+      await user.type(field(), "two lines");
+      expect(fireEvent.keyDown(field(), { key: "Enter", shiftKey: true })).toBe(true);
+      expect(fireEvent.keyDown(field(), { key: "Enter", isComposing: true })).toBe(true);
+      expect(props.onSent).not.toHaveBeenCalled();
+      expect(field()).toHaveValue("two lines");
+    });
+
+    it("sends nothing on a bare Enter in an empty box, so a stray press answers no dialog", () => {
+      const props = renderComposer();
+      expect(fireEvent.keyDown(field(), { key: "Enter" })).toBe(false);
+      expect(props.onSent).not.toHaveBeenCalled();
+      expect(field()).toHaveValue("");
+    });
+
+    it("still sends on Ctrl+Enter", async () => {
+      const user = userEvent.setup();
+      const props = renderComposer();
+      await user.type(field(), "looks good");
+      expect(fireEvent.keyDown(field(), { key: "Enter", ctrlKey: true })).toBe(false);
+      await waitFor(() => expect(props.onSent).toHaveBeenCalled());
+    });
+  });
+
   it("holds the field, attach and the primary action as siblings on ONE row of the box", async () => {
     renderComposer();
     const box = boxOf(field());
