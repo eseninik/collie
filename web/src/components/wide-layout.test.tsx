@@ -424,21 +424,23 @@ describe("the strip", () => {
 });
 
 describe("width", () => {
-  it("in wide mode a new column is 1/2 and the button cycles 1/2, 4/5, Full", async () => {
+  it("in wide mode a new column is Full, one opened beside is 1/2, and the button cycles 1/2, 4/5, Full", async () => {
     // 1200 less the 320 sidebar leaves 880, at least two panes of 360.
     const { container } = await mount("w1:p1", 1200);
     await openBesideFromSidebar(container, A2);
     const col = columns(container)[0]!;
     const button = () => within(col).getByRole("button", { name: /^Width / });
-    expect(button().textContent).toBe("1/2");
+    expect(button().textContent).toBe("Full");
+    expect(col.style.flex).toBe("0 0 100%");
+    expect(within(columns(container)[1]!).getByRole("button", { name: /^Width / }).textContent).toBe("1/2");
+    fireEvent.click(button());
+    await waitFor(() => expect(button().textContent).toBe("1/2"));
     expect(col.style.flex).toBe("0 0 50%");
     fireEvent.click(button());
     await waitFor(() => expect(button().textContent).toBe("4/5"));
     expect(col.style.flex).toBe("0 0 80%");
     fireEvent.click(button());
     await waitFor(() => expect(button().textContent).toBe("Full"));
-    fireEvent.click(button());
-    await waitFor(() => expect(button().textContent).toBe("1/2"));
     // The width is the column's own: the button changes nothing about the focus.
     expect(columns(container)[1]?.hasAttribute("data-focused")).toBe(true);
   });
@@ -594,12 +596,16 @@ describe("the add column", () => {
   };
 
   it("always ends the strip, after the last column, as wide as the room it leaves and never under a pane", async () => {
-    // One column at 1/2 of 880: the add column is the other half.
+    // One column at Full of 880: the add column is a pane wide, past the edge of the view.
     const { container } = await mount("w1:p1", 1200);
     const strip = q(container, '[data-slot="strip"]')!;
     expect(strip.lastElementChild).toBe(addColumn(container));
-    expect(addColumn(container)?.style.flex).toBe("0 0 440px");
+    expect(addColumn(container)?.style.flex).toBe("0 0 360px");
     const widthButton = () => within(columns(container)[0]!).getByRole("button", { name: /^Width / });
+    fireEvent.click(widthButton());
+    await waitFor(() => expect(widthButton().textContent).toBe("1/2"));
+    // One column at 1/2 of 880: the add column is the other half.
+    expect(addColumn(container)?.style.flex).toBe("0 0 440px");
     fireEvent.click(widthButton());
     await waitFor(() => expect(widthButton().textContent).toBe("4/5"));
     // 1/5 of 880 is under a pane: the add column is a pane wide, so the strip scrolls to it.

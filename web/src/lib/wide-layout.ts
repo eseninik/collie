@@ -60,8 +60,11 @@ export type Preset = "half" | "fourfifths" | "full";
 
 export const PRESETS: readonly Preset[] = ["half", "fourfifths", "full"];
 
-/** A newly opened column's width. */
-export const NEW_COLUMN_PRESET: Preset = "half";
+/** A column opened on its own: it takes the whole strip. */
+export const NEW_COLUMN_PRESET: Preset = "full";
+
+/** A column placed next to another one (Open beside, a drop): the two stay on screen together. */
+export const BESIDE_COLUMN_PRESET: Preset = "half";
 
 export const PRESET_FRACTION = {
   half: 1 / 2,
@@ -212,7 +215,7 @@ export function openBeside(strip: SpaceStrip, key: string): SpaceStrip {
   const focusAt = strip.focus === null || strip.focus === key ? -1 : rest.findIndex((c) => c.key === strip.focus);
   const at = focusAt < 0 ? rest.length : focusAt + 1;
   return {
-    cols: [...rest.slice(0, at), { key, preset: NEW_COLUMN_PRESET }, ...rest.slice(at)],
+    cols: [...rest.slice(0, at), { key, preset: BESIDE_COLUMN_PRESET }, ...rest.slice(at)],
     focus: key,
   };
 }
@@ -222,7 +225,7 @@ export function insertAt(strip: SpaceStrip, key: string, index: number): SpaceSt
   const removedAt = indexOf(strip, key);
   const rest = strip.cols.filter((c) => c.key !== key);
   const at = Math.min(Math.max(removedAt >= 0 && removedAt < index ? index - 1 : index, 0), rest.length);
-  const preset = removedAt >= 0 ? (strip.cols[removedAt]?.preset ?? NEW_COLUMN_PRESET) : NEW_COLUMN_PRESET;
+  const preset = strip.cols[removedAt]?.preset ?? BESIDE_COLUMN_PRESET;
   return { cols: [...rest.slice(0, at), { key, preset }, ...rest.slice(at)], focus: key };
 }
 
