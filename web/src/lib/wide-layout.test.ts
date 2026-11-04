@@ -145,9 +145,9 @@ describe("the focus rules", () => {
     expect(next.focus).toBe("x");
   });
 
-  it("arriving on an empty strip makes the pane the first column", () => {
+  it("arriving on an empty strip makes the pane the first column, at Full", () => {
     const next = arrive(EMPTY_STRIP, "a");
-    expect(next).toEqual({ cols: [{ key: "a", preset: "half" }], focus: "a" });
+    expect(next).toEqual({ cols: [{ key: "a", preset: "full" }], focus: "a" });
   });
 
   it("Open here replaces the focused column, and moves a pane that is a column elsewhere", () => {
