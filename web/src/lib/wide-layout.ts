@@ -68,11 +68,8 @@ export type Preset = "half" | "fourfifths" | "full";
 
 export const PRESETS: readonly Preset[] = ["half", "fourfifths", "full"];
 
-/** A column opened on its own: it takes the whole strip. */
+/** A newly opened column's width. */
 export const NEW_COLUMN_PRESET: Preset = "full";
-
-/** A column placed next to another one (Open beside, a drop): the two stay on screen together. */
-export const BESIDE_COLUMN_PRESET: Preset = "half";
 
 export const PRESET_FRACTION = {
   half: 1 / 2,
@@ -201,7 +198,7 @@ export function arrive(strip: SpaceStrip, key: string): SpaceStrip {
     return { cols: [{ key, preset: NEW_COLUMN_PRESET }, ...strip.cols], focus: key };
   }
   return {
-    cols: strip.cols.map((c, i) => (i === at ? { key, preset: c.preset } : c)),
+    cols: strip.cols.map((c, i) => (i === at ? { key, preset: NEW_COLUMN_PRESET } : c)),
     focus: key,
   };
 }
@@ -210,9 +207,8 @@ export function arrive(strip: SpaceStrip, key: string): SpaceStrip {
 export function openHere(strip: SpaceStrip, key: string): SpaceStrip {
   const at = focusIndex(strip);
   if (at < 0 || strip.focus === key) return arrive(strip, key);
-  const preset = strip.cols[at]?.preset ?? NEW_COLUMN_PRESET;
   const cols = strip.cols
-    .map((c, i) => (i === at ? { key, preset } : c))
+    .map((c, i) => (i === at ? { key, preset: NEW_COLUMN_PRESET } : c))
     .filter((c, i) => i === at || c.key !== key);
   return { cols, focus: key };
 }
@@ -223,7 +219,7 @@ export function openBeside(strip: SpaceStrip, key: string): SpaceStrip {
   const focusAt = strip.focus === null || strip.focus === key ? -1 : rest.findIndex((c) => c.key === strip.focus);
   const at = focusAt < 0 ? rest.length : focusAt + 1;
   return {
-    cols: [...rest.slice(0, at), { key, preset: BESIDE_COLUMN_PRESET }, ...rest.slice(at)],
+    cols: [...rest.slice(0, at), { key, preset: NEW_COLUMN_PRESET }, ...rest.slice(at)],
     focus: key,
   };
 }
@@ -233,7 +229,7 @@ export function insertAt(strip: SpaceStrip, key: string, index: number): SpaceSt
   const removedAt = indexOf(strip, key);
   const rest = strip.cols.filter((c) => c.key !== key);
   const at = Math.min(Math.max(removedAt >= 0 && removedAt < index ? index - 1 : index, 0), rest.length);
-  const preset = strip.cols[removedAt]?.preset ?? BESIDE_COLUMN_PRESET;
+  const preset = removedAt >= 0 ? (strip.cols[removedAt]?.preset ?? NEW_COLUMN_PRESET) : NEW_COLUMN_PRESET;
   return { cols: [...rest.slice(0, at), { key, preset }, ...rest.slice(at)], focus: key };
 }
 
