@@ -8,6 +8,7 @@ import { applyDraftFontSize, fontStack, inputFocusZoomsPage, reportOfferOf, sent
 import type { DisplayPrefs, Hand } from "@/hooks/use-display-prefs";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { useDirectTyping } from "@/hooks/use-direct-typing";
+import { useMediaQuery } from "@/hooks/use-media-query";
 import { useLocale } from "@/hooks/use-locale";
 import { t as translate, tn as translatePlural } from "@/lib/i18n";
 import { holdsMask } from "@/lib/masked-text";
@@ -1827,6 +1828,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     armedWhen.current = undefined;
     void send(line, true, when);
   }
+  const enterSends = useMediaQuery("(pointer: fine)");
   const confirmingSend = sendConfirm.pending === "send";
   // A modal ask owns the agent's keyboard: the Send slot and the placeholder say so (spec 10).
   const askOwnsKeys = slot === "answer" && !direct.active;
@@ -3334,9 +3336,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               direct.active
                 ? direct.onKeyDown
                 : (e) => {
-                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                    if (e.key !== "Enter") return;
+                    if (e.metaKey || e.ctrlKey) {
                       e.preventDefault();
                       onSendClick();
+                    } else if (enterSends && !e.shiftKey && !e.nativeEvent.isComposing) {
+                      // A device with a mouse has Shift for the newline; a phone's keyboard does not.
+                      e.preventDefault();
+                      if (hasDraft) onSendClick();
                     }
                   }
             }
