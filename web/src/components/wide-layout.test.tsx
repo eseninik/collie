@@ -449,7 +449,7 @@ describe("the strip", () => {
 });
 
 describe("width", () => {
-  it("in wide mode a new column is Full, one opened beside is 1/2, and the button cycles 1/2, 4/5, Full", async () => {
+  it("in wide mode every new column is Full, and the button cycles 1/2, 4/5, Full", async () => {
     // 1200 less the 320 sidebar leaves 880, at least two panes of 360.
     const { container } = await mount("w1:p1", 1200);
     await openBesideFromSidebar(container, A2);
@@ -457,7 +457,7 @@ describe("width", () => {
     const button = () => within(col).getByRole("button", { name: /^Width / });
     expect(button().textContent).toBe("Full");
     expect(col.style.flex).toBe("0 0 100%");
-    expect(within(columns(container)[1]!).getByRole("button", { name: /^Width / }).textContent).toBe("1/2");
+    expect(within(columns(container)[1]!).getByRole("button", { name: /^Width / }).textContent).toBe("Full");
     fireEvent.click(button());
     await waitFor(() => expect(button().textContent).toBe("1/2"));
     expect(col.style.flex).toBe("0 0 50%");
