@@ -64,6 +64,7 @@ export const PHOSPHOR = {
   "display-settings": "faders-horizontal", // display settings · lucide Settings2
   "done": "check", // done, finished · lucide Check
   "download": "download-simple", // download · lucide Download
+  "drag-handle": null, // the grip that drags a row into a new place · lucide GripVertical
   "edit": "pencil-simple", // edit or rename · lucide Pencil
   "editor-close": "arrows-in-simple", // leave the full-screen editor · lucide Minimize2
   "editor-open": "arrows-out-simple", // open the full-screen editor · lucide Maximize2
