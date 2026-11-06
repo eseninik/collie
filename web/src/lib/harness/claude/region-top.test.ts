@@ -72,10 +72,12 @@ describe(`${NOTICE_FIXTURE}`, () => {
     expect(findRegionTop(texts, 39)).toEqual({ line: 20, edge: true });
   });
 
-  it("lifts the picker as a menu", () => {
+  it("lifts the picker as a menu with ten rows and the marker on row 2", () => {
     const menu = claudeBuildBlocks(lines).find((block) => block.kind === "menu");
     expect(menu?.kind).toBe("menu");
     if (menu?.kind !== "menu") return;
     expect(menu.menu.title).toBe("Select model");
+    expect(menu.menu.rows?.labels).toHaveLength(10);
+    expect(menu.menu.rows?.current).toBe(1);
   });
 });
