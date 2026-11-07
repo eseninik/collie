@@ -298,6 +298,129 @@ describe("UnreadDialogBlock", () => {
   });
 });
 
+// Codex draws its update prompt at the TOP of a 40-row pane and leaves the rest blank. The card's
+// mirror opens at its bottom (#667), so the blank tail left the operator an empty black box. jsdom
+// has no layout, so these read the anchored mirror's rows, not a scroll offset. Driven through the
+// real pipeline, so the rows are what a Codex pane really hands the card.
+const UPDATE_DIALOG = [
+  "",
+  "  Update available · 0.166.0 → 0.167.0",
+  "  Release notes: https://github.com/openai/codex/releases/latest",
+  "",
+  "› 1. Update now (runs `sh -c 's=$(curl -fsSL https://chatgpt.com/codex/install.sh) && CODEX_NON_INTERACTIVE=1 eval",
+  "     \"$s\"'`)",
+  "  2. Skip",
+  "  3. Skip until next version",
+  "",
+  "  enter continue · esc skip",
+];
+const LAST_DIALOG_ROW = "  enter continue · esc skip";
+
+function codexCard(rows: string[]) {
+  const block = buildBlocks(splitLines(parseAnsi(rows.join("\n"))), { agent: "codex" }).find(
+    (b) => b.kind === "unread-dialog",
+  );
+  if (!block || block.kind !== "unread-dialog") throw new Error("this Codex screen produced no card");
+  return block;
+}
+
+function mirrorRows(container: HTMLElement) {
+  const mirrors = container.querySelectorAll("pre");
+  expect(mirrors).toHaveLength(1);
+  return mirrors[0]!.textContent!.split("\n");
+}
+
+describe("@oracle:requirement @req:MIRROR-1 a dialog above blank rows opens in view", () => {
+  it.each([
+    ["pans", false],
+    ["wraps", true],
+  ])("the mirror ends on the dialog's last printed row when it %s", (_name, wrap) => {
+    const block = codexCard([...UPDATE_DIALOG, ...Array<string>(29).fill("")]);
+    const { container } = render(
+      <UnreadDialogBlock cancel={block.cancel} lines={block.lines} onAction={vi.fn()} wrap={wrap} />,
+    );
+    const rows = mirrorRows(container);
+    expect(rows.at(-1)).toBe(LAST_DIALOG_ROW);
+    expect(rows).toEqual(UPDATE_DIALOG);
+  });
+});
+
+describe("@oracle:requirement @req:MIRROR-2 a dialog that is already the last rows of the pane", () => {
+  it("keeps the rows above it and its blank rows, in order", () => {
+    const rows = [
+      "",
+      "• Ran the tests",
+      "",
+      "",
+      "  12 passed",
+      "   ",
+      ...UPDATE_DIALOG,
+    ];
+    const block = codexCard(rows);
+    const { container } = render(
+      <UnreadDialogBlock cancel={block.cancel} lines={block.lines} onAction={vi.fn()} />,
+    );
+    expect(mirrorRows(container)).toEqual(rows);
+  });
+
+  it("keeps a dialog with nothing above it whole", () => {
+    const block = codexCard(UPDATE_DIALOG);
+    const { container } = render(
+      <UnreadDialogBlock cancel={block.cancel} lines={block.lines} onAction={vi.fn()} />,
+    );
+    expect(mirrorRows(container)).toEqual(UPDATE_DIALOG);
+  });
+});
+
+describe("@oracle:requirement @req:MIRROR-3 whitespace-only rows at the tail count as blank", () => {
+  it.each([
+    ["rows of spaces", ["      ", "   ", " "]],
+    ["a styled row of spaces", ["\x1b[48;5;236m        \x1b[0m"]],
+    ["a row of several styled segments of spaces", ["\x1b[48;5;236m    \x1b[0m\x1b[1m   \x1b[0m  "]],
+    ["spaces and empty rows mixed", ["", "    ", "", "\x1b[7m  \x1b[0m", ""]],
+  ])("drops %s after the dialog", (_name, tail) => {
+    const block = codexCard([...UPDATE_DIALOG, ...tail]);
+    const { container } = render(
+      <UnreadDialogBlock cancel={block.cancel} lines={block.lines} onAction={vi.fn()} />,
+    );
+    const rows = mirrorRows(container);
+    expect(rows.at(-1)).toBe(LAST_DIALOG_ROW);
+    expect(rows).toEqual(UPDATE_DIALOG);
+  });
+});
+
+describe("@oracle:requirement @req:MIRROR-4 the key control on a dialog above blank rows", () => {
+  const SCREEN_ROWS = [...UPDATE_DIALOG, ...Array<string>(29).fill(""), "    "];
+
+  it("arms on the first tap and sends Esc once on the second", async () => {
+    const user = userEvent.setup();
+    const block = codexCard(SCREEN_ROWS);
+    const onAction = vi.fn();
+    render(<UnreadDialogBlock cancel={block.cancel} lines={block.lines} onAction={onAction} />);
+
+    await user.click(screen.getByRole("button", { name: "Esc" }));
+    expect(onAction).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Tap again to send Esc" }));
+    expect(onAction).toHaveBeenCalledExactlyOnceWith("Escape");
+    expect(screen.getByRole("button", { name: "Esc" })).toBeInTheDocument();
+  });
+
+  it("leaves the parent's lines as they were", async () => {
+    const user = userEvent.setup();
+    const block = codexCard(SCREEN_ROWS);
+    const sameRows = [...block.lines];
+    const sameContent = structuredClone(block.lines);
+    render(<UnreadDialogBlock cancel={block.cancel} lines={block.lines} onAction={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "Esc" }));
+    await user.click(screen.getByRole("button", { name: "Tap again to send Esc" }));
+
+    expect(block.lines).toHaveLength(sameRows.length);
+    block.lines.forEach((line, i) => expect(line).toBe(sameRows[i]));
+    expect(block.lines).toEqual(sameContent);
+  });
+});
+
 describe("Report a problem on the card (ADR 0123, amendment 2026-10-28)", () => {
   afterEach(() => act(() => __resetReport()));
 
