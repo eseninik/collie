@@ -67,6 +67,12 @@ export interface UnreadDialogBlockProps {
 // the screen's own rows print `esc dismiss`; otherwise it names the key, never a verb.
 const NAMES_A_DISMISS = /\besc\s+dismiss\b/i;
 
+/** The rows up to the last one that prints anything: a dialog over a tall pane's empty rows ends on its own footer. */
+function withoutBlankTail(lines: StyledLine[]): StyledLine[] {
+  const last = lines.findLastIndex((l) => lineText(l).trim() !== "");
+  return lines.slice(0, last + 1);
+}
+
 export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onReport, onShown, paneId }: UnreadDialogBlockProps) {
   useLocale();
   const [sending, setSending] = useState(false);
@@ -159,9 +165,10 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onR
 
       {/* The mirror is its own scroller, capped, and opens at its bottom: the dialog is the LAST rows of
           the pane, and the old rows above it are what a top-anchored box showed (#667). Capped here so
-          the key button above it stays on the screen instead of scrolling away with the dock. */}
+          the key button above it stays on the screen instead of scrolling away with the dock. Empty rows
+          under the dialog are cut, or that bottom is a black box (Codex's update prompt tops a tall pane). */}
       <RawMirror
-        lines={lines}
+        lines={withoutBlankTail(lines)}
         wrap={wrap}
         anchor="bottom"
         className="max-h-[30dvh] overflow-y-auto overscroll-contain"
