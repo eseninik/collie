@@ -88,7 +88,8 @@
     "enterWhileRunning": "queues",
     "commandWhileRunning": "queues",
     "commandWhileRunningNote": "Lab 2026-10-16: measured on Claude Code 2.1.301 with /help only (queued as a row above the box, ran after the turn).",
-    "neverHeld": ["/clear", "/exit", "/quit", "/logout", "/resume", "/branch", "!"],
+    "neverHeld": ["/clear", "/exit", "/quit", "/logout", "/resume", "/branch"],
+    "neverHeldNote": "`!` left the list on the owner's decision, 2026-11-09: Claude Code 2.1.319 queues a shell line sent in a turn, shows it with `ctrl+q to send now` and `Press up to edit queued messages`, and runs it after the turn (live, pane ss-form, twice).",
     "queuedRow": {
       "pattern": "^\\s*❯ (?<text>\\S.*?)\\s*$",
       "hint": "^\\s*(?:ctrl\\+enter|ctrl\\+x ctrl\\+s) to send now\\s*$",
