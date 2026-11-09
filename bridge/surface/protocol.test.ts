@@ -11711,4 +11711,70 @@ describe("Claude Code 2.1.319, a `!` shell line over its path completion row (ow
     expect(answer.detail).toBe(NEVER_HELD);
     expect(r.pane.calls).toEqual([]);
   });
+  // Review of the fix (2026-11-09): Enter goes out only when the pointer row holds exactly the typed last
+  // word. A pointer row read short of its path (a space in it, a wrapped row under it) or a path that
+  // only ends the same way is another entry.
+  /** One send of `text` over a typed screen of the owner's box with `under` as the rows under it. */
+  const sendOver = async (text: string, under: readonly string[]) => {
+    const pane = replay(text, [EDGE, `!  ${text.slice(2)}`, EDGE, ...under].join("\n"));
+    const answer = await rig({ pane, version: "2.1.319" }).send(text, { mode: "command" });
+    return { pane, answer };
+  };
+
+  test("@oracle:requirement @req:BANG-PATH-4 a pointer on a path with a space is not the typed prefix: Enter stays back", async () => {
+    // The profile's pointer pattern ends the command at the space, so the row reads `/tmp/my` and a description.
+    const { pane, answer } = await sendOver("! cat /tmp/my", ["  ❯ /tmp/my file.sh"]);
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue", keys: ["probe", "Backspace"] });
+    expect(answer.detail).toBe(LIST_ELSEWHERE);
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("@oracle:requirement @req:BANG-PATH-5 an absolute entry that only ends the typed word is another path: Enter stays back", async () => {
+    const { pane, answer } = await sendOver("! cat /a//tmp/x", ["  ❯ /tmp/x"]);
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted" });
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("@oracle:requirement @req:BANG-PATH-6 a pointed path that goes on in a wrapped row is longer than the typed word: Enter stays back", async () => {
+    const first = `/tmp/${"x".repeat(100)}`;
+    const wrapped = "        y-continued.sh";
+    expect(wrapped).toMatch(/^ {8,}\S/u);
+    const { pane, answer } = await sendOver(`! cat ${first}`, [`  ❯ ${first}`, wrapped]);
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted" });
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+});
+
+// The OMP path rule (`notForText`) is unchanged by the Claude fix: a path text whose last word is a bare
+// name, with the list's pointer on that name, is no path completion. Screens: tester 14's `/plan` capture
+// (omp 18.12.6, 120 columns), its box text and its pointer row swapped for this text and entry.
+describe("@oracle:requirement @req:BANG-PATH-7 OMP: a path text whose last word is a bare name keeps its behaviour", () => {
+  const FIXTURES = join(import.meta.dir, "fixtures");
+  const capture = (name: string): string => readFileSync(join(FIXTURES, `omp--v18-12-6-plan-on-${name}--w120.txt`), "utf8");
+  const TEXT = "~/proj/a.sh foo";
+
+  test("`~/proj/a.sh foo` with the pointer on `foo` under the box is not sent with Enter", async () => {
+    const empty = capture("empty");
+    const probe = empty.replace(/^╰─.*$/mu, `╰─ ${PROBE}`);
+    const typed = capture("slash-plan").replace(/^╰─ \/plan$/mu, `╰─ ${TEXT}`).replace(/^❯ 🗺 {2}plan .*$/mu, "❯ foo");
+    expect(typed).toContain(`\n╰─ ${TEXT}\n❯ foo\n`);
+    expect(TEXT).toMatch(/^\s*@?(?:~|\.{1,2}|\/[^\s/]+)\//u);
+    const pane = new FakePane("generic");
+    let entered = false;
+    pane.afterInput = (_p, what) => {
+      if (what === "keys:Enter") entered = true;
+    };
+    pane.beforeRead = (p) => {
+      if (entered) p.fixed = capture("slash-plan-sent");
+      else if (p.box === "") p.fixed = empty;
+      else if (p.box === PROBE) p.fixed = probe;
+      else if (p.box === TEXT) p.fixed = typed;
+      else throw new Error(`the screen never showed the box holding ${JSON.stringify(p.box)}`);
+    };
+    const answer = await rig({ pane, harness: "omp", version: "18.12.6" }).send(TEXT);
+    // The outcome on the base before the Claude fix (128759f7f), kept: the list is something that opened at the box.
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue", keys: ["probe", "Backspace"] });
+    expect(answer.receipt?.detail).toBe("Something opened at the box after the text was typed, so Enter was not pressed.");
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
 });
