@@ -11591,7 +11591,6 @@ describe("Claude Code 2.1.319, a `!` shell line over its path completion row (ow
   const PATH = "/tmp/claude-1000/-home-admin-projects-ss-form/45649e85-9af7-4fcd-b8ab-dfb5bc6ee83a/scratchpad/drive-spike.sh";
   const TEXT = `! sudo bash ${PATH}`;
   const LIST_ELSEWHERE = "The command list at the box pointed at another command, so Enter was not pressed.";
-  const NEVER_HELD = "Collie does not queue this command during a turn. Send it when the turn ends.";
   const rows = TYPED.split("\n");
   const EDGE = rows[0]!;
   const emptyScreen = [EDGE, "❯ ", EDGE].join("\n");
