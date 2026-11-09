@@ -52,7 +52,9 @@
           "entry": "^ {2,6}(?<command>[/…]\\S+)(?: +\\S.*)?$",
           "wrapped": "^ {8,}\\S",
           "notForText": "^\\s*!",
-          "notForTextNote": "Live case 2026-11-09, Claude Code 2.1.319 over Herdr, 120 columns: in bash mode (`! sudo bash /tmp/…/drive-spike.sh`) Claude draws its path completion under the box, `  ❯ /tmp/…/drive-spike.sh`, which has the shape of a pointed command. A shell line opens no command list. Enter in that pane submitted the line unchanged. The rule matches the text Collie typed: the box's own read drops the `!` prompt glyph, so the Surface read is unchanged. Enter goes out only when the pointer row holds the text's whole last word alone (pointsAtPathEnd); a completion of a prefix, another file or a path with a space is still another entry."
+          "notForTextEnterTypes": true,
+          "notForTextEnterTypesNote": "Lab 2026-11-09, Claude Code 2.1.319 over tmux, 120 columns: `! ls <dir>/subdir` under the completion `❯ …/subdir/` ran `ls <dir>/subdir` as typed, and `! ls <dir>/sub` under the same completion ran `ls <dir>/sub` (No such file or directory): in bash mode Enter submits the typed line and never takes the completion.",
+          "notForTextNote": "Live case 2026-11-09, Claude Code 2.1.319 over Herdr, 120 columns: in bash mode (`! sudo bash /tmp/…/drive-spike.sh`) Claude draws its path completion under the box, `  ❯ /tmp/…/drive-spike.sh`, which has the shape of a pointed command. A shell line opens no command list. Enter in that pane submitted the line unchanged. The rule matches the text Collie typed: the box's own read drops the `!` prompt glyph, so the Surface read is unchanged. Enter never takes the completion there (notForTextEnterTypes)."
         }
       }
     },
