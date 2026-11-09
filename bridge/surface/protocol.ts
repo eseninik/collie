@@ -244,7 +244,7 @@ import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
 import { noEchoPromptIn } from "../../web/src/lib/no-echo.ts";
 import { isImagePath, isUploadImagePath, pastePieces } from "../../web/src/lib/upload-path.ts";
-import { pointsAt, staleListUnder } from "../../web/src/lib/surface/command-list.ts";
+import { enterTypesText, pointsAt, staleListUnder } from "../../web/src/lib/surface/command-list.ts";
 import type { PopupRead } from "../../web/src/lib/surface/popup.ts";
 import { commandListAnyText, commandListAt, isRunningRow, noticeOver, ownCommandList, popupAt, readCues, readCuesFor, runningSign, withoutCommandList, withoutPopup, withoutPromptEchoes, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
 import { loadProfiles } from "../../web/src/lib/surface/profile.ts";
@@ -1805,6 +1805,8 @@ function listPointsElsewhere(snap: Snap, prefix: string, lines: readonly string[
   const list = snap.commandList ?? snap.listAnyText;
   if (list === null || list.pointed === null || snap.frame === null) return false;
   if (!commandBoxMatches(boxText(snap.frame), prefix, lines, collapse)) return false;
+  // A harness whose Enter takes such a text as typed never picks the pointed row (Claude's bash-mode completion).
+  if (enterTypesText(rows, prefix + lines.join(""))) return false;
   return !pointsAt(list, prefix + lines.join(""), rows);
 }
 
