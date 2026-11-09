@@ -11575,3 +11575,108 @@ describe("agy 1.4.12, the empty box over a sub-agent rail, replayed from the rep
     expect(pane.calls).toEqual([]);
   });
 });
+
+// The owner's pane, 2026-11-09 (receipt 84b8cbc4): a `!` shell line sent as a command to an idle Claude
+// Code 2.1.319 box, 120 columns. Claude draws its path completion under the box: one row, its pointer on
+// the path that is the text's last word. The send ended typed_not_submitted (modal_cue, "pointed at
+// another command") and Enter was never pressed. In the same pane, with that row drawn, a raw Enter
+// submitted the line unchanged: the row is a completion of what is typed, not another command. The
+// typed screen is the pane's capture; the empty and probe screens are the same box without the text,
+// drawn here from its edge rows, because the field kept only the typed read.
+describe("Claude Code 2.1.319, a `!` shell line over its path completion row (owner's pane, 2026-11-09)", () => {
+  const FIXTURES = join(import.meta.dir, "fixtures");
+  const TYPED = readFileSync(join(FIXTURES, "claude--v2319-bang-path-completion--w120.txt"), "utf8").replace(/\n$/u, "");
+  const PATH = "/tmp/claude-1000/-home-admin-projects-ss-form/45649e85-9af7-4fcd-b8ab-dfb5bc6ee83a/scratchpad/drive-spike.sh";
+  const TEXT = `! sudo bash ${PATH}`;
+  const LIST_ELSEWHERE = "The command list at the box pointed at another command, so Enter was not pressed.";
+  const NEVER_HELD = "Collie does not queue this command during a turn. Send it when the turn ends.";
+  const rows = TYPED.split("\n");
+  const EDGE = rows[0]!;
+  const emptyScreen = [EDGE, "❯ ", EDGE].join("\n");
+  const probeScreen = [EDGE, `❯ ${PROBE}`, EDGE].join("\n");
+
+  /** A pane whose reads are the empty box, the probe in it, or `typed` once the box holds `text`. */
+  const replay = (text: string, typed: string): FakePane => {
+    const pane = new FakePane("claude");
+    pane.collapseOver = 100_000;
+    let entered = false;
+    pane.afterInput = (_p, what) => {
+      if (what === "keys:Enter") entered = true;
+    };
+    pane.beforeRead = (p) => {
+      if (entered || p.box === "") p.fixed = emptyScreen;
+      else if (p.box === PROBE) p.fixed = probeScreen;
+      else if (p.box === text) p.fixed = typed;
+      else throw new Error(`the pane never showed the box holding ${JSON.stringify(p.box)}`);
+    };
+    return pane;
+  };
+
+  test("the capture is the owner's screen: the box holds the line, and the one row under it points at the line's last word", () => {
+    expect(rows).toHaveLength(5);
+    expect(rows[0]).toMatch(/^─{40,}$/u);
+    expect(rows[1]).toBe("!  sudo bash");
+    expect(rows[2]).toBe(`  ${PATH}`);
+    expect(rows[3]).toBe(EDGE);
+    expect(rows[4]).toBe(`  ❯ ${PATH}`);
+    expect(TEXT).toHaveLength(120);
+    expect(TEXT.split(" ").at(-1)).toBe(PATH);
+  });
+
+  test("@oracle:requirement @req:BANG-PATH-1 a `!` line whose completion pointer is its own last word goes in with Enter, sent", async () => {
+    const pane = replay(TEXT, TYPED);
+    const answer = await rig({ pane, version: "2.1.319" }).send(TEXT, { mode: "command" });
+    expect(answer.receipt).toMatchObject({ profileStatus: "provisional", outcome: "sent" });
+    expect(answer.detail).not.toBe(LIST_ELSEWHERE);
+    expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+    expect(pane.keysSeen.filter((key) => key === "Enter")).toHaveLength(1);
+    expect(pane.keysSeen).not.toContain("Tab");
+    expect(pane.keysSeen).not.toContain("Escape");
+    // The line went in as typed: Enter on the completion row did not swap the path.
+    expect(pane.transcript.at(-1)).toBe(`> ${TEXT}`);
+  });
+
+  describe("@oracle:requirement @req:BANG-PATH-2 a completion pointer on another path still keeps Enter back", () => {
+    test("the typed last word is a prefix and the pointer shows the whole file name", async () => {
+      const text = "! sudo bash /tmp/dri";
+      const typed = [EDGE, "!  sudo bash /tmp/dri", EDGE, "  ❯ /tmp/drive-spike.sh"].join("\n");
+      const pane = replay(text, typed);
+      const answer = await rig({ pane, version: "2.1.319" }).send(text, { mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue", keys: ["probe", "Backspace"] });
+      expect(answer.detail).toBe(LIST_ELSEWHERE);
+      expect(pane.keysSeen).not.toContain("Enter");
+    });
+
+    test("the pointer rests on a sibling file in the same folder", async () => {
+      const sibling = PATH.replace("drive-spike.sh", "drive-spike2.sh");
+      const typed = TYPED.replace(`  ❯ ${PATH}`, `  ❯ ${sibling}`);
+      expect(typed).not.toBe(TYPED);
+      const pane = replay(TEXT, typed);
+      const answer = await rig({ pane, version: "2.1.319" }).send(TEXT, { mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue", keys: ["probe", "Backspace"] });
+      expect(answer.detail).toBe(LIST_ELSEWHERE);
+      expect(pane.keysSeen).not.toContain("Enter");
+    });
+
+    test("the pointer's path is in the line but is not its last word", async () => {
+      const text = `${TEXT} --dry-run`;
+      const typed = TYPED.replace(`  ${PATH}\n`, `  ${PATH} --dry-run\n`);
+      expect(typed).not.toBe(TYPED);
+      const pane = replay(text, typed);
+      const answer = await rig({ pane, version: "2.1.319" }).send(text, { mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue", keys: ["probe", "Backspace"] });
+      expect(answer.detail).toBe(LIST_ELSEWHERE);
+      expect(pane.keysSeen).not.toContain("Enter");
+    });
+  });
+
+  test("@oracle:requirement @req:BANG-PATH-3 the same `!` line in a running turn is refused turn_running, never typed", async () => {
+    const r = rig({ version: "2.1.319" });
+    r.pane.over = [LIVE_ROW];
+    r.pane.popup = [`  ❯ ${PATH}`];
+    const answer = await r.send(TEXT, { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect(answer.detail).toBe(NEVER_HELD);
+    expect(r.pane.calls).toEqual([]);
+  });
+});
