@@ -264,6 +264,15 @@ describe("the codex profile (M56 spec 13)", () => {
     expect(parseProfile(rawCodex()).idle.volatile.below.commandList).toBeUndefined();
   });
 
+  it("@oracle:requirement @req:BANG-PATH-ENTER claude: a shell line's Enter takes the line as typed, never the completion under it (lab, 2026-11-09)", () => {
+    const list = parseProfile(rawClaude()).idle.volatile.below.commandList!;
+    expect(list.notForText).toBeDefined();
+    expect(new RegExp(list.notForText!, "u").test("! ls /tmp")).toBe(true);
+    expect(list.notForTextEnterTypes).toBe(true);
+    // No other shipped list says so: OMP's Enter takes its popup.
+    expect(loadProfiles().get("omp")!.idle.volatile.below.commandList!.notForTextEnterTypes).toBeUndefined();
+  });
+
   it("pi and omp: the slash list under the box names its command without the lead (field case 2026-10-17, 1.22.5)", () => {
     const read = (id: string) => {
       const list = loadProfiles().get(id)!.idle.volatile.below.commandList!;
@@ -1075,6 +1084,8 @@ describe("parseProfile names the failing field", () => {
     ["a command list staleWhenEmpty that is no boolean", ["idle", "volatile", "below", "commandList", "staleWhenEmpty"], "yes", "idle.volatile.below.commandList.staleWhenEmpty"],
     ["a command list notForText that is no expression", ["idle", "volatile", "below", "commandList", "notForText"], "[unclosed", "idle.volatile.below.commandList.notForText"],
     ["a command list notForText that matches an empty text", ["idle", "volatile", "below", "commandList", "notForText"], "^\\s*", "idle.volatile.below.commandList.notForText"],
+    ["a command list notForTextEnterTypes that is not a boolean", ["idle", "volatile", "below", "commandList", "notForTextEnterTypes"], "yes", "idle.volatile.below.commandList.notForTextEnterTypes"],
+    ["a command list notForTextEnterTypes with no notForText", ["idle", "volatile", "below", "commandList", "notForText"], undefined, "idle.volatile.below.commandList.notForTextEnterTypes"],
     ["typeahead popups that are no object", ["idle", "volatile", "below", "popups"], "yes", "idle.volatile.below.popups"],
     ["typeahead popups whose submit key does not ignore them", ["idle", "volatile", "below", "popups"], { submitIgnores: false, maxRows: 4, rules: [{ name: "x", text: "@$", rows: "^(?<pointer>❯) \\S" }] }, "idle.volatile.below.popups.submitIgnores"],
     ["typeahead popups of no rows", ["idle", "volatile", "below", "popups"], { submitIgnores: true, maxRows: 0, rules: [{ name: "x", text: "@$", rows: "^(?<pointer>❯) \\S" }] }, "idle.volatile.below.popups.maxRows"],
