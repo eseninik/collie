@@ -5821,6 +5821,48 @@ describe("the held send (M56 spec 15)", () => {
     expect(behind.pane.calls).toEqual([]);
   });
 
+  // Review of BANG-HOLD (2026-11-09): the rule reads the line as Collie types it. The typed text drops
+  // paste markers and control bytes (sendLines), so a `!` behind them is still a shell line.
+  describe("@oracle:requirement @req:BANG-HOLD-4 a `!` line is never held, read as it is typed", () => {
+    const NEVER = "Collie does not queue this command during a turn. Send it when the turn ends.";
+
+    test.each([
+      ["behind paste markers", "\u001b[200~! git status\u001b[201~"],
+      ["behind a control byte", "\u0007! git status"],
+    ])("%s: refused in a turn, never held, never typed after it", async (_name, text) => {
+      const r = untrusted();
+      const answer = await r.send(text, { id: "bang-hold-41", mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+      expect(r.holds.list()).toEqual([]);
+      expect(r.pane.calls).toEqual([]);
+      turnEnds(r.pane);
+      await freeTwice(r);
+      await tick(r);
+      expect(r.pane.calls).toEqual([]);
+      expect(r.pane.transcript.some((row) => row.includes("git status"))).toBe(false);
+    });
+
+    test("behind paste markers, after an earlier held message: refused, not held behind it", async () => {
+      const r = untrusted();
+      expect((await r.send("first message", { id: "bang-hold-42" })).receipt).toMatchObject({ outcome: "held" });
+      turnEnds(r.pane);
+      const answer = await r.send("\u001b[200~! git status\u001b[201~", { id: "bang-hold-43", mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+      expect(answer.detail).toBe(NEVER);
+      expect(r.holds.list().map((entry) => entry.id)).toEqual(["bang-hold-42"]);
+      expect(r.pane.calls).toEqual([]);
+    });
+
+    test("Replace with a `!` line in a turn is not held", async () => {
+      const r = untrusted();
+      const answer = await r.send("! git status", { id: "bang-hold-44", mode: "replace" });
+      expect(answer.receipt?.outcome).not.toBe("held");
+      expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+      expect(r.holds.list()).toEqual([]);
+      expect(r.pane.calls).toEqual([]);
+    });
+  });
+
   test("a held command expires after 10 minutes, a held text after 30 (H6)", async () => {
     const clock = { now: 1_000_000 };
     const holds = new HoldStore(join(dir, "held"), () => clock.now);
