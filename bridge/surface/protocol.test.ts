@@ -11662,7 +11662,9 @@ describe("@oracle:requirement @req:BANG-PATH-7 OMP: a path text whose last word 
 // the line verbatim with `  ctrl+q to send now` under it, the box showed `❯ Press up to edit queued
 // messages`, and the line ran after the turn. The screen after Enter is that pane's rows
 // (claude--v2319-bang-queued--w120.txt); the screens before it are the same spinner and footer around
-// the box, drawn here: the empty box, the probe in it and the typed line.
+// the box, drawn here: the empty box, the probe in it and the typed line. The capture starts at the
+// queued line; the conversation above it, which a pane in a turn always shows and which the in-turn
+// compare reads (the rows above may only scroll), is drawn here too, the same on every screen.
 describe("Claude Code 2.1.319, a `!` shell line in a running turn is queued (owner, 2026-11-09)", () => {
   const FIXTURES = join(import.meta.dir, "fixtures");
   const QUEUED = readFileSync(join(FIXTURES, "claude--v2319-bang-queued--w120.txt"), "utf8").replace(/\n$/u, "");
@@ -11672,7 +11674,9 @@ describe("Claude Code 2.1.319, a `!` shell line in a running turn is queued (own
   const EDGE = queuedRows[7]!;
   const SPIN = queuedRows.slice(4, 7);
   const FOOT = queuedRows.slice(10);
-  const running = (box: readonly string[], under: readonly string[] = FOOT): string => [...SPIN, EDGE, ...box, EDGE, ...under].join("\n");
+  const CONVERSATION = ["❯ run the drive spike once the build is green", "", "● Building the bundle first, then the spike.", "  The build takes about a minute.", ""];
+  const running = (box: readonly string[], under: readonly string[] = FOOT): string => [...CONVERSATION, ...SPIN, EDGE, ...box, EDGE, ...under].join("\n");
+  const afterEnter = (rows: readonly string[]): string => [...CONVERSATION, ...rows].join("\n");
 
   /** A pane in a running turn: the empty box, the probe, `typed` once the box holds `text`, `queued` after Enter. */
   const replay = (text: string, typed: string, queued: string): FakePane => {
@@ -11706,7 +11710,7 @@ describe("Claude Code 2.1.319, a `!` shell line in a running turn is queued (own
   test("@oracle:requirement @req:BANG-QUEUE-1 `! git status` in a turn is typed and entered once, sent and queued", async () => {
     const text = "! git status";
     const typed = running(["!  git status"]);
-    const queued = ["! git status", ...queuedRows.slice(2)].join("\n");
+    const queued = afterEnter(["! git status", ...queuedRows.slice(2)]);
     const pane = replay(text, typed, queued);
     const answer = await rig({ pane, version: "2.1.319" }).send(text, { mode: "command" });
     expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
@@ -11718,7 +11722,7 @@ describe("Claude Code 2.1.319, a `!` shell line in a running turn is queued (own
   test("@oracle:requirement @req:BANG-QUEUE-2 the owner's line over its own path completion row in a turn is sent and queued", async () => {
     const text = `! sudo bash ${PATH}`;
     const typed = running(["!  sudo bash", `  ${PATH}`], [`  ❯ ${PATH}`]);
-    const pane = replay(text, typed, QUEUED);
+    const pane = replay(text, typed, afterEnter(queuedRows));
     const answer = await rig({ pane, version: "2.1.319" }).send(text, { mode: "command" });
     expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
     expect(answer.receipt?.keys.at(-1)).toBe("Enter");
