@@ -31,12 +31,8 @@ const DIALOG = [
 const PANE_ROWS = 40;
 const SCREEN = [...DIALOG, ...Array<string>(PANE_ROWS - DIALOG.length).fill("")].join("\n");
 
-const BLOCKED_SNAPSHOT = {
-  ...fixtureSnapshot,
-  agents: fixtureSnapshot.agents.map((agent) =>
-    agent.paneId === PANE_ID ? { ...agent, status: "blocked" as const } : agent,
-  ),
-};
+const BLOCKED_SNAPSHOT = structuredClone(fixtureSnapshot);
+for (const agent of BLOCKED_SNAPSHOT.agents) if (agent.paneId === PANE_ID) agent.status = "blocked";
 
 async function openPane(page: Page, wrap: boolean) {
   await pinLocale(page, "en");
@@ -62,8 +58,8 @@ function measure(page: Page) {
       const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
       const printed: Text[] = [];
       while (walker.nextNode()) {
-        const node = walker.currentNode as Text;
-        if (node.data.trim() !== "") printed.push(node);
+        const node = walker.currentNode;
+        if (node instanceof Text && node.data.trim() !== "") printed.push(node);
       }
       const range = document.createRange();
       range.setStartBefore(printed[0]!);
