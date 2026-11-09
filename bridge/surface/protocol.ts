@@ -1637,6 +1637,11 @@ const COMMAND_IN_TURN = "A command waits until the turn ends.";
 /** The detail of a command the profile never lets wait in a turn (`keys.neverHeld`). */
 const NEVER_HELD = "Collie does not queue this command during a turn. Send it when the turn ends.";
 
+/** Whether a text is a shell line (`!`): never held by Collie, whatever the profile lets the harness queue. */
+function shellLine(text: string): boolean {
+  return text.trimStart().startsWith("!");
+}
+
 /**
  * The profile's entry in `keys.neverHeld` that a text matches, or null. A one-character entry (`!`)
  * matches every line that starts with it; a longer one matches the command word alone or followed by
@@ -3019,7 +3024,7 @@ export class SendProtocol {
       const refusal = textRefusal(request, match);
       if (refusal !== null) return this.settle(state, refusal);
       // A command the profile never lets wait is refused, never held: it would act on a later session.
-      if (state.command && neverHeldEntry(request.text, match) !== null) return this.settle(state, new Ended("refused", "turn_running", { detail: NEVER_HELD }));
+      if (state.command && (neverHeldEntry(request.text, match) !== null || shellLine(request.text))) return this.settle(state, new Ended("refused", "turn_running", { detail: NEVER_HELD }));
       return this.hold(state, new Ended("refused", "turn_running", { detail: HELD_BEHIND }));
     }
     const work = this.run(request, accepted.record, target);
@@ -3085,6 +3090,8 @@ export class SendProtocol {
     // A draft proven live by its probe (2026-10-25) left the box as it was: it holds like an unprobed one did.
     if (state.keys.length > 0 && !clean && !(end.reason === "draft_present" && (probeOnly(state) || state.placeholderProbe !== null))) return false;
     if (!HOLDABLE.has(state.request.mode) || state.neverHold === true) return false;
+    // A shell line goes to the harness's own queue or not at all: Collie typing it later would run it on a later machine state.
+    if (state.command && shellLine(state.request.text)) return false;
     if (end.reason === "turn_running") return true;
     if (state.manual || state.match === null) return false;
     const leads = state.match.profile.reservedLeads;
