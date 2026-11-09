@@ -11762,71 +11762,42 @@ describe("Claude Code 2.1.319, a `!` shell line over its path completion row (ow
     expect(pane.transcript.at(-1)).toBe(`> ${TEXT}`);
   });
 
-  describe("@oracle:requirement @req:BANG-PATH-2 a completion pointer on another path still keeps Enter back", () => {
-    test("the typed last word is a prefix and the pointer shows the whole file name", async () => {
-      const text = "! sudo bash /tmp/dri";
-      const typed = [EDGE, "!  sudo bash /tmp/dri", EDGE, "  ❯ /tmp/drive-spike.sh"].join("\n");
-      const pane = replay(text, typed);
-      const answer = await rig({ pane, version: "2.1.319" }).send(text, { mode: "command" });
-      expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue", keys: ["probe", "Backspace"] });
-      expect(answer.detail).toBe(LIST_ELSEWHERE);
-      expect(pane.keysSeen).not.toContain("Enter");
-    });
-
-    test("the pointer rests on a sibling file in the same folder", async () => {
-      const sibling = PATH.replace("drive-spike.sh", "drive-spike2.sh");
-      const typed = TYPED.replace(`  ❯ ${PATH}`, `  ❯ ${sibling}`);
-      expect(typed).not.toBe(TYPED);
-      const pane = replay(TEXT, typed);
-      const answer = await rig({ pane, version: "2.1.319" }).send(TEXT, { mode: "command" });
-      expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue", keys: ["probe", "Backspace"] });
-      expect(answer.detail).toBe(LIST_ELSEWHERE);
-      expect(pane.keysSeen).not.toContain("Enter");
-    });
-
-    test("the pointer's path is in the line but is not its last word", async () => {
-      const text = `${TEXT} --dry-run`;
-      const typed = TYPED.replace(`  ${PATH}\n`, `  ${PATH} --dry-run\n`);
-      expect(typed).not.toBe(TYPED);
-      const pane = replay(text, typed);
-      const answer = await rig({ pane, version: "2.1.319" }).send(text, { mode: "command" });
-      expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue", keys: ["probe", "Backspace"] });
-      expect(answer.detail).toBe(LIST_ELSEWHERE);
-      expect(pane.keysSeen).not.toContain("Enter");
-    });
-  });
-
-  // Review of the fix (2026-11-09): Enter goes out only when the pointer row holds exactly the typed last
-  // word. A pointer row read short of its path (a space in it, a wrapped row under it) or a path that
-  // only ends the same way is another entry.
-  /** One send of `text` over a typed screen of the owner's box with `under` as the rows under it. */
-  const sendOver = async (text: string, under: readonly string[]) => {
-    const pane = replay(text, [EDGE, `!  ${text.slice(2)}`, EDGE, ...under].join("\n"));
+  // Lab 2026-11-09, Claude Code 2.1.319 in tmux, 120 columns, and the owner's pane the same day: in bash
+  // mode Enter submits the line as typed and never takes the completion under the box. `! ls <dir>/subdir`
+  // under `❯ …ome-admin-…/lab-dir/subdir/` ran `ls <dir>/subdir`; `! ls <dir>/sub` under the same row ran
+  // `ls <dir>/sub` (No such file or directory). The owner's `! rm -rf /home/admin/projects/case-passport`
+  // under `❯ /home/admin/projects/case-passport/` ended typed_not_submitted (LIST_ELSEWHERE) before this.
+  /** One send of `text` over a typed screen of the owner's box with `box` as its rows and `under` under it. */
+  const sendOver = async (text: string, under: readonly string[], box: readonly string[] = [`!  ${text.slice(2)}`]) => {
+    const pane = replay(text, [EDGE, ...box, EDGE, ...under].join("\n"));
     const answer = await rig({ pane, version: "2.1.319" }).send(text, { mode: "command" });
     return { pane, answer };
   };
+  const LAB_DIR = "/tmp/claude-1000/-home-admin-projects-lab/lab-dir";
+  const LONG = `/tmp/${"x".repeat(100)}`;
+  const SIBLING = PATH.replace("drive-spike.sh", "drive-spike2.sh");
 
-  test("@oracle:requirement @req:BANG-PATH-4 a pointer on a path with a space is not the typed prefix: Enter stays back", async () => {
-    // The profile's pointer pattern ends the command at the space, so the row reads `/tmp/my` and a description.
-    const { pane, answer } = await sendOver("! cat /tmp/my", ["  ❯ /tmp/my file.sh"]);
-    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue", keys: ["probe", "Backspace"] });
-    expect(answer.detail).toBe(LIST_ELSEWHERE);
-    expect(pane.keysSeen).not.toContain("Enter");
-  });
-
-  test("@oracle:requirement @req:BANG-PATH-5 an absolute entry that only ends the typed word is another path: Enter stays back", async () => {
-    const { pane, answer } = await sendOver("! cat /a//tmp/x", ["  ❯ /tmp/x"]);
-    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted" });
-    expect(pane.keysSeen).not.toContain("Enter");
-  });
-
-  test("@oracle:requirement @req:BANG-PATH-6 a pointed path that goes on in a wrapped row is longer than the typed word: Enter stays back", async () => {
-    const first = `/tmp/${"x".repeat(100)}`;
-    const wrapped = "        y-continued.sh";
-    expect(wrapped).toMatch(/^ {8,}\S/u);
-    const { pane, answer } = await sendOver(`! cat ${first}`, [`  ❯ ${first}`, wrapped]);
-    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted" });
-    expect(pane.keysSeen).not.toContain("Enter");
+  describe("@oracle:requirement @req:BANG-PATH-ENTER a `!` line goes in with Enter whatever completion row stands under the box", () => {
+    test.each([
+      ["the owner's directory with a trailing slash", "! rm -rf /home/admin/projects/case-passport", ["  ❯ /home/admin/projects/case-passport/"], undefined],
+      ["the lab's directory under a `…`-cut pointer with a trailing slash", `! ls ${LAB_DIR}/subdir`, ["  ❯ …ome-admin-…/lab-dir/subdir/"], undefined],
+      ["the lab's prefix of that directory under the same pointer", `! ls ${LAB_DIR}/sub`, ["  ❯ …ome-admin-…/lab-dir/subdir/"], undefined],
+      ["a prefix whose pointer shows the whole file name", "! sudo bash /tmp/dri", ["  ❯ /tmp/drive-spike.sh"], undefined],
+      ["a pointer on a sibling file", TEXT, [`  ❯ ${SIBLING}`], ["!  sudo bash", `  ${PATH}`]],
+      ["a pointer on a path in the line that is not its last word", `${TEXT} --dry-run`, [`  ❯ ${PATH}`], ["!  sudo bash", `  ${PATH} --dry-run`]],
+      ["a pointer on a path with a space, read short at the space", "! cat /tmp/my", ["  ❯ /tmp/my file.sh"], undefined],
+      ["an absolute pointer that only ends the typed word", "! cat /a//tmp/x", ["  ❯ /tmp/x"], undefined],
+      ["a pointed path that goes on in a wrapped row", `! cat ${LONG}`, [`  ❯ ${LONG}`, "        y-continued.sh"], undefined],
+    ] as const)("%s: sent, Enter once, the line as typed", async (_name, text, under, box) => {
+      const { pane, answer } = await sendOver(text, under, box);
+      expect(answer.receipt).toMatchObject({ outcome: "sent" });
+      expect(answer.detail).not.toBe(LIST_ELSEWHERE);
+      expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+      expect(pane.keysSeen.filter((key) => key === "Enter")).toHaveLength(1);
+      expect(pane.keysSeen).not.toContain("Tab");
+      expect(pane.keysSeen).not.toContain("Escape");
+      expect(pane.transcript.at(-1)).toBe(`> ${text}`);
+    });
   });
 });
 
