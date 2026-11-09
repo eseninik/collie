@@ -334,7 +334,8 @@ function pointsAtPathEnd(read: CommandListRead, text: string, list: CommandListR
   const patterns = listPatterns(list);
   if (read.pointed === null || !opensNoList(patterns, text) || !read.pointed.startsWith(patterns.lead)) return false;
   const entry = read.pointed.slice(patterns.lead.length);
-  return entry.length > 0 && text.endsWith(`/${entry}`);
+  // Claude's bash-mode completion shows the whole path, not the file name: the entry is the last word itself.
+  return entry.length > 0 && (text.endsWith(`/${entry}`) || /\S+$/u.exec(text)?.[0] === entry);
 }
 
 /**
