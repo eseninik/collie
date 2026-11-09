@@ -23,6 +23,8 @@ export interface CommandListRead {
   readonly first: number;
   readonly last: number;
   readonly entries: readonly string[];
+  /** A list under the box: the pointer row holds its command alone, no description and no wrapped row after it. */
+  readonly pointedAlone?: boolean;
 }
 
 interface CompiledCommandList {
@@ -76,7 +78,7 @@ function isBlank(text: string): boolean {
 }
 
 /** One row of a command list: the pointed entry or another entry, each with its command, a row that is no entry, or none of them. */
-type ListRow = { readonly kind: "pointer" | "entry"; readonly command: string } | { readonly kind: "wrapped" } | null;
+type ListRow = { readonly kind: "pointer" | "entry"; readonly command: string; readonly alone?: boolean } | { readonly kind: "wrapped" } | null;
 
 /**
  * Whether a styled row paints `command` bold: a `pointerBold` list's pointer (absent row = no
@@ -127,7 +129,8 @@ function listRow(text: string, patterns: CompiledCommandList, row?: FrameRow, fi
     const head = patterns.pointer.exec(text);
     if (head !== null) {
       const command = head.groups?.["command"];
-      return command === undefined ? null : { kind: "pointer", command: patterns.lead + command };
+      if (command === undefined) return null;
+      return { kind: "pointer", command: patterns.lead + command, alone: text.trimEnd() === text.slice(0, text.indexOf(command)) + command };
     }
   }
   const entry = patterns.entry.exec(text);
@@ -164,6 +167,8 @@ function footerFrom(texts: readonly string[], at: number, footer: CompiledComman
  */
 function listUnder(texts: readonly string[], bottom: number, patterns: CompiledCommandList, rows?: readonly FrameRow[], fill?: FrameRow): CommandListRead | null {
   let pointed: string | null = null;
+  let pointedAlone = false;
+  let previous: ListRow = null;
   const entries: string[] = [];
   let last = bottom;
   for (let i = bottom + 1; i < texts.length; i++) {
@@ -179,16 +184,20 @@ function listUnder(texts: readonly string[], bottom: number, patterns: CompiledC
     }
     if (row.kind === "wrapped") {
       if (entries.length === 0) return null;
+      // The pointed entry goes on in this row: what the row above showed is not all of it.
+      if (previous?.kind === "pointer") pointedAlone = false;
     } else {
       if (row.kind === "pointer") {
         if (pointed !== null) return null;
         pointed = row.command;
+        pointedAlone = row.alone === true;
       }
       entries.push(row.command);
     }
+    previous = row;
     last = i;
   }
-  return entries.length === 0 ? null : { pointed, side: "under", first: bottom + 1, last, entries };
+  return entries.length === 0 ? null : { pointed, side: "under", first: bottom + 1, last, entries, pointedAlone };
 }
 
 /**
@@ -334,8 +343,11 @@ function pointsAtPathEnd(read: CommandListRead, text: string, list: CommandListR
   const patterns = listPatterns(list);
   if (read.pointed === null || !opensNoList(patterns, text) || !read.pointed.startsWith(patterns.lead)) return false;
   const entry = read.pointed.slice(patterns.lead.length);
-  // Claude's bash-mode completion shows the whole path, not the file name: the entry is the last word itself.
-  return entry.length > 0 && (text.endsWith(`/${entry}`) || /\S+$/u.exec(text)?.[0] === entry);
+  if (entry.length === 0) return false;
+  if (!entry.startsWith("/") && text.endsWith(`/${entry}`)) return true;
+  // Claude's bash-mode completion shows the whole path, not the file name: the pointer row holds the
+  // text's last word and nothing more (a path with a space would read cut at the space).
+  return entry.startsWith("/") && read.pointedAlone === true && /\S+$/u.exec(text)?.[0] === entry;
 }
 
 /**
