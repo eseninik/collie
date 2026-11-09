@@ -5853,6 +5853,57 @@ describe("the held send (M56 spec 15)", () => {
     expect(untrustedHolds.list()).toEqual([]);
   });
 
+  // Review of BANG-QUEUE (2026-11-09): a `!` shell line goes only to Claude's own visible queue (owner),
+  // never into Collie's holds, which type it later, after the turn and maybe on a later session (the
+  // rule above: a command that may not wait is refused, never held).
+  test("@oracle:requirement @req:BANG-HOLD-1 a `!` line on a Claude whose version was not read is refused in a turn, never held or typed later", async () => {
+    const r = untrusted();
+    const answer = await r.send("! git status", { id: "bang-hold-01", mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect(r.holds.list()).toEqual([]);
+    expect(r.protocol.heldOf("main", "%1")).toEqual([]);
+    expect(r.pane.calls).toEqual([]);
+    expect(r.pane.keysSeen).toEqual([]);
+    // Nothing comes back for it once the turn ends.
+    turnEnds(r.pane);
+    await freeTwice(r);
+    await tick(r);
+    expect(r.pane.calls).toEqual([]);
+    expect(r.pane.transcript).not.toContain("> ! git status");
+  });
+
+  test("@oracle:requirement @req:BANG-HOLD-2 a `!` line behind an earlier held send is refused, not held behind it", async () => {
+    const r = untrusted();
+    expect((await r.send("first message", { id: "bang-hold-02" })).receipt).toMatchObject({ outcome: "held" });
+    turnEnds(r.pane);
+    const answer = await r.send("! git status", { id: "bang-hold-03", mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect(answer.detail).toBe("Collie does not queue this command during a turn. Send it when the turn ends.");
+    expect(r.holds.list().map((entry) => entry.id)).toEqual(["bang-hold-02"]);
+    expect(r.protocol.heldOf("main", "%1").map((row) => row.requestId)).toEqual(["bang-hold-02"]);
+    expect(r.pane.calls).toEqual([]);
+    // The earlier send still goes, alone.
+    const [first] = await freeTwice(r);
+    expect(first?.receipt).toMatchObject({ requestId: "bang-hold-02", outcome: "sent" });
+    expect(r.pane.transcript).not.toContain("> ! git status");
+  });
+
+  test("@oracle:requirement @req:BANG-HOLD-3 in the same two setups a message and /compact are still held", async () => {
+    const r = untrusted();
+    expect((await r.send("/compact", { id: "bang-hold-04", mode: "command" })).receipt).toMatchObject({ outcome: "held", keys: [] });
+    expect((await r.send("then give it a title", { id: "bang-hold-05" })).receipt).toMatchObject({ outcome: "held", keys: [] });
+    const behind = untrusted({ holds: new HoldStore(join(dir, "held-behind")) });
+    expect((await behind.send("first message", { id: "bang-hold-06" })).receipt).toMatchObject({ outcome: "held" });
+    turnEnds(behind.pane);
+    const compact = await behind.send("/compact", { id: "bang-hold-07", mode: "command" });
+    expect(compact.receipt).toMatchObject({ outcome: "held", keys: [] });
+    expect(compact.detail).toBe("Earlier messages wait for this pane. Collie sends this after them.");
+    expect(r.holds.list().map((entry) => entry.id)).toEqual(["bang-hold-04", "bang-hold-05"]);
+    expect(behind.holds.list().map((entry) => entry.id)).toEqual(["bang-hold-06", "bang-hold-07"]);
+    expect(r.pane.calls).toEqual([]);
+    expect(behind.pane.calls).toEqual([]);
+  });
+
   test("a held command expires after 10 minutes, a held text after 30 (H6)", async () => {
     const clock = { now: 1_000_000 };
     const holds = new HoldStore(join(dir, "held"), () => clock.now);
