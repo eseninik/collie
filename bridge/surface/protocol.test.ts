@@ -5562,7 +5562,8 @@ describe("the held send (M56 spec 15)", () => {
     const holds = new HoldStore(join(dir, "held"));
     const r = rig({ holds });
     r.pane.over = [LIVE_ROW];
-    for (const text of ["/clear", "/resume", "!git status"]) {
+    // The Claude profile's never-held list; a `!` shell line left it on 2026-11-09 (owner): BANG-QUEUE-1.
+    for (const text of ["/clear", "/resume"]) {
       const answer = await r.send(text, { mode: "command" });
       expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
       expect(answer.detail).toBe("Collie does not queue this command during a turn. Send it when the turn ends.");
@@ -5753,7 +5754,8 @@ describe("the held send (M56 spec 15)", () => {
     const holds = new HoldStore(join(dir, "held"));
     const r = rig({ edit: steersWithNoQueueKey, holds });
     r.pane.over = [LIVE_ROW];
-    for (const text of ["/clear", "/resume", "!git status"]) {
+    // The Claude profile's never-held list; a `!` shell line left it on 2026-11-09 (owner): BANG-QUEUE-1.
+    for (const text of ["/clear", "/resume"]) {
       const answer = await r.send(text, { mode: "command" });
       expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
       expect(answer.detail).toBe("Collie does not queue this command during a turn. Send it when the turn ends.");
@@ -11587,15 +11589,6 @@ describe("Claude Code 2.1.319, a `!` shell line over its path completion row (ow
     });
   });
 
-  test("@oracle:requirement @req:BANG-PATH-3 the same `!` line in a running turn is refused turn_running, never typed", async () => {
-    const r = rig({ version: "2.1.319" });
-    r.pane.over = [LIVE_ROW];
-    r.pane.popup = [`  ❯ ${PATH}`];
-    const answer = await r.send(TEXT, { mode: "command" });
-    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
-    expect(answer.detail).toBe(NEVER_HELD);
-    expect(r.pane.calls).toEqual([]);
-  });
   // Review of the fix (2026-11-09): Enter goes out only when the pointer row holds exactly the typed last
   // word. A pointer row read short of its path (a space in it, a wrapped row under it) or a path that
   // only ends the same way is another entry.
@@ -11661,5 +11654,90 @@ describe("@oracle:requirement @req:BANG-PATH-7 OMP: a path text whose last word 
     expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue", keys: ["probe", "Backspace"] });
     expect(answer.receipt?.detail).toBe("Something opened at the box after the text was typed, so Enter was not pressed.");
     expect(pane.keysSeen).not.toContain("Enter");
+  });
+});
+
+// Owner's decision, 2026-11-09 ("я не могу отправить команду", twice while a Claude turn ran): on Claude a
+// `!` shell line in a running turn is typed and entered, and Claude Code queues it. Live, Claude Code
+// 2.1.319 over Herdr, pane ss-form w4:p1, 120 columns: Enter on a box holding the line in a turn printed
+// the line verbatim with `  ctrl+q to send now` under it, the box showed `❯ Press up to edit queued
+// messages`, and the line ran after the turn. The screen after Enter is that pane's rows
+// (claude--v2319-bang-queued--w120.txt); the screens before it are the same spinner and footer around
+// the box, drawn here: the empty box, the probe in it and the typed line.
+describe("Claude Code 2.1.319, a `!` shell line in a running turn is queued (owner, 2026-11-09)", () => {
+  const FIXTURES = join(import.meta.dir, "fixtures");
+  const QUEUED = readFileSync(join(FIXTURES, "claude--v2319-bang-queued--w120.txt"), "utf8").replace(/\n$/u, "");
+  const PATH = "/tmp/claude-1000/-home-admin-projects-ss-form/45649e85-9af7-4fcd-b8ab-dfb5bc6ee83a/scratchpad/drive-spike.sh";
+  const NEVER_HELD = "Collie does not queue this command during a turn. Send it when the turn ends.";
+  const queuedRows = QUEUED.split("\n");
+  const EDGE = queuedRows[7]!;
+  const SPIN = queuedRows.slice(4, 7);
+  const FOOT = queuedRows.slice(10);
+  const running = (box: readonly string[], under: readonly string[] = FOOT): string => [...SPIN, EDGE, ...box, EDGE, ...under].join("\n");
+
+  /** A pane in a running turn: the empty box, the probe, `typed` once the box holds `text`, `queued` after Enter. */
+  const replay = (text: string, typed: string, queued: string): FakePane => {
+    const pane = new FakePane("claude");
+    pane.collapseOver = 100_000;
+    let entered = false;
+    pane.afterInput = (_p, what) => {
+      if (what === "keys:Enter") entered = true;
+    };
+    pane.beforeRead = (p) => {
+      if (entered) p.fixed = queued;
+      else if (p.box === "") p.fixed = running(["❯ "]);
+      else if (p.box === PROBE) p.fixed = running([`❯ ${PROBE}`]);
+      else if (p.box === text) p.fixed = typed;
+      else throw new Error(`the pane never showed the box holding ${JSON.stringify(p.box)}`);
+    };
+    return pane;
+  };
+
+  test("the screen after Enter is the owner's: the line, `ctrl+q to send now`, the spinner, the box's queued hint", () => {
+    expect(queuedRows).toHaveLength(12);
+    expect(queuedRows[0]).toBe("! sudo bash");
+    expect(queuedRows[1]).toBe(`  ${PATH}`);
+    expect(queuedRows[2]).toBe("  ctrl+q to send now");
+    expect(queuedRows[4]).toMatch(/^✻ Unfurling… \(43s/u);
+    expect(EDGE).toMatch(/^─{120}$/u);
+    expect(queuedRows[8]).toBe("❯ Press up to edit queued messages");
+    expect(queuedRows[9]).toBe(EDGE);
+  });
+
+  test("@oracle:requirement @req:BANG-QUEUE-1 `! git status` in a turn is typed and entered once, sent and queued", async () => {
+    const text = "! git status";
+    const typed = running(["!  git status"]);
+    const queued = ["! git status", ...queuedRows.slice(2)].join("\n");
+    const pane = replay(text, typed, queued);
+    const answer = await rig({ pane, version: "2.1.319" }).send(text, { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+    expect(pane.keysSeen.filter((key) => key === "Enter")).toHaveLength(1);
+    neverEscape(pane);
+  });
+
+  test("@oracle:requirement @req:BANG-QUEUE-2 the owner's line over its own path completion row in a turn is sent and queued", async () => {
+    const text = `! sudo bash ${PATH}`;
+    const typed = running(["!  sudo bash", `  ${PATH}`], [`  ❯ ${PATH}`]);
+    const pane = replay(text, typed, QUEUED);
+    const answer = await rig({ pane, version: "2.1.319" }).send(text, { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+    expect(pane.keysSeen.filter((key) => key === "Enter")).toHaveLength(1);
+    neverEscape(pane);
+  });
+
+  test("@oracle:requirement @req:BANG-QUEUE-3 Claude's session commands stay refused in a turn, and `!` stays never-held on the other profiles", async () => {
+    const r = rig({ version: "2.1.319" });
+    r.pane.over = [LIVE_ROW];
+    for (const command of ["/clear", "/resume", "/exit", "/quit", "/logout", "/branch"]) {
+      const answer = await r.send(command, { mode: "command" });
+      expect(answer.receipt, command).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+      expect(answer.detail, command).toBe(NEVER_HELD);
+    }
+    expect(r.pane.calls).toEqual([]);
+    for (const harness of ["codex", "muse", "cursor", "kiro", "hermes"]) {
+      expect(neverHeldEntry("!git status", profileFor(harness, null, { log: () => undefined })), harness).toBe("!");
+    }
   });
 });
