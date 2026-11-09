@@ -1639,7 +1639,8 @@ const NEVER_HELD = "Collie does not queue this command during a turn. Send it wh
 
 /** Whether a text is a shell line (`!`): never held by Collie, whatever the profile lets the harness queue. */
 function shellLine(text: string): boolean {
-  return text.trimStart().startsWith("!");
+  // The line as it is typed: paste markers and control bytes are cut first, as sendLines cuts them.
+  return (sendLines(text)[0] ?? "").trimStart().startsWith("!");
 }
 
 /**
