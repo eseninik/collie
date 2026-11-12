@@ -3249,6 +3249,7 @@ export class SendProtocol {
     watch.cleared = false;
     const record = this.deps.store.rearm(id, this.deps.generation(entry.paneId) ?? undefined);
     if (record === null) {
+      this.inTurnReleases.delete(id);
       holds.remove(id);
       return null;
     }
@@ -3262,6 +3263,7 @@ export class SendProtocol {
       answer = await work;
     } catch (err) {
       // A throw that is not an end (a bug, a disk error): the request ends unknown, the text kept.
+      this.inTurnReleases.delete(id);
       holds.end(id, "unknown", "crash");
       throw err;
     } finally {
@@ -3370,7 +3372,9 @@ export class SendProtocol {
           holds.setHarness(entry.id, agentOfGeneration(generation));
         }
         next ??= entry;
-        if (firstIntoTurn === null && entry.intoTurn === true && (this.inTurnReleases.get(entry.id) ?? 0) < IN_TURN_RELEASES) firstIntoTurn = entry;
+        // Only the oldest of a person's sends may go into the turn: one that spent its releases keeps the
+        // ones behind it waiting too, so the agent reads them in the order they were sent.
+        if (firstIntoTurn === null && entry.intoTurn === true) firstIntoTurn = entry;
       }
       if (next === null) {
         this.watches.delete(`${session}\u0000${paneId}`);
@@ -3451,7 +3455,7 @@ export class SendProtocol {
       // free there, ahead of requests that wait for the turn's end (owner, 2026-11-12: every send reaches
       // the terminal at once). A poll that reads the turn reads no free pane, so the turn rules above never
       // hold on the same poll.
-      const inTurn = firstIntoTurn !== null && watch.turnFreeReads >= FREE_POLLS;
+      const inTurn = firstIntoTurn !== null && (this.inTurnReleases.get(firstIntoTurn.id) ?? 0) < IN_TURN_RELEASES && watch.turnFreeReads >= FREE_POLLS;
       if (busy || !(afterTurn || turnEnded || quiet || draftLeft || cleared || placeholder || inTurn)) continue;
       const chosen = inTurn ? firstIntoTurn! : next;
       if (this.deps.releaseCheck?.(chosen.id, session, paneId) === false) {
