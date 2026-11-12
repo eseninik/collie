@@ -72,6 +72,8 @@ class ClaudePane {
   dialog: string[] | null = null;
   /** Texts Enter queued during a turn: drawn as Claude's queued rows over the spinner. */
   queued: string[] = [];
+  /** Submit keys the box ignores before it takes one again: the text stays in the box. */
+  ignoreEnter = 0;
   calls: string[] = [];
   keysSeen: string[] = [];
   revision = 1;
@@ -118,6 +120,7 @@ class ClaudePane {
       this.keysSeen.push(key);
       if (this.dialog !== null) continue;
       if (key === "Backspace") this.box = [...this.box].slice(0, -1).join("");
+      else if (key === "Enter" && this.ignoreEnter > 0) this.ignoreEnter--;
       else if (key === "Enter" && this.box !== "") {
         if (this.running) this.queued.push(this.box);
         else this.transcript.push(`> ${this.box}`);
@@ -534,5 +537,67 @@ describe("INTURN: a held phone send goes into the running turn (owner, 2026-11-1
     for (let i = 0; i < 6 && r.holds.list().length > 0; i++) sent.push(...(await r.tick()));
     expect(sent.find((answer) => answer !== null)?.receipt).toMatchObject({ requestId: id, outcome: "sent" });
     expect(r.pane.transcript.at(-1)).toBe("> also check the lint output");
+  });
+
+  test("INTURN-11 a person's sends keep their order: B never goes into the turn ahead of A once A's in-turn releases are spent", async () => {
+    const r = rig();
+    const a = await heldInTurn(r, "first thought");
+    const b = `held-${String(++ids).padStart(6, "0")}`;
+    expect((await r.send("second thought", { id: b, fromPhone: true })).receipt).toMatchObject({ outcome: "held", keys: [] });
+    // A's in-turn releases meet the dialog at S0 until they are spent (IN_TURN_RELEASES, as in INTURN-8).
+    let attempts = 0;
+    for (let i = 0; i < 40; i++) {
+      for (const answer of await r.tick(IN_TURN_FREE_SURFACE)) {
+        if (answer === null) continue;
+        attempts++;
+        expect(answer.receipt).toMatchObject({ requestId: a, outcome: "held", keys: [] });
+      }
+    }
+    expect(attempts).toBe(8);
+    // The dialog clears while the turn still runs: the polls read the turn free, and nothing jumps A.
+    r.pane.answerDialog();
+    expect(r.read()).toMatchObject(IN_TURN_FREE);
+    for (let i = 0; i < 8; i++) expect(await r.tick()).toEqual([]);
+    expect(r.pane.queued).toEqual([]);
+    expect(r.pane.calls).toEqual([]);
+    expect(r.holds.list().map((entry) => `${entry.id} ${entry.state}`)).toEqual([`${a} held`, `${b} held`]);
+    // The turn ends: A goes first, then B.
+    r.pane.endTurn();
+    const sent: string[] = [];
+    for (let i = 0; i < 30 && r.holds.list().length > 0; i++) {
+      for (const answer of await r.tick()) if (answer?.receipt?.outcome === "sent") sent.push(answer.receipt.requestId);
+    }
+    expect(sent).toEqual([a, b]);
+    expect(r.pane.transcript.slice(-2)).toEqual(["> first thought", "> second thought"]);
+    expect(r.pane.queued).toEqual([]);
+  });
+
+  test("INTURN-12 an in-turn release whose submit key does not take ends with its own outcome, not held again; the phone send behind it waits while the box holds that text", async () => {
+    const r = rig();
+    const a = await heldInTurn(r, "first thought");
+    const b = `held-${String(++ids).padStart(6, "0")}`;
+    expect((await r.send("second thought", { id: b, fromPhone: true })).receipt).toMatchObject({ outcome: "held", keys: [] });
+    r.pane.answerDialog();
+    // The box ignores the next submit key once: the text stays in it.
+    r.pane.ignoreEnter = 1;
+    expect(await r.tick()).toEqual([]);
+    const [released] = await r.tick();
+    const outcome = released?.receipt?.outcome;
+    // The decision names typed_not_submitted; a queued send whose text stays in the box may also read
+    // unknown(dialog_after_enter) today. Either way it is an end, never sent, never held again.
+    expect(["typed_not_submitted", "unknown"]).toContain(outcome ?? "none");
+    expect(released?.receipt?.requestId).toBe(a);
+    expect(released?.receipt?.keys).toContain("Enter");
+    expect(r.pane.box).toBe("first thought");
+    expect(r.pane.queued).toEqual([]);
+    expect(r.holds.get(a)).toMatchObject({ state: "ended", outcome });
+    // B is next, but the box holds A's text: nothing goes into the turn, nothing is typed over it.
+    const calls = r.pane.calls.length;
+    const keys = r.pane.keysSeen.length;
+    for (let i = 0; i < 6; i++) expect(await r.tick()).toEqual([]);
+    expect(r.pane.calls.slice(calls)).toEqual([]);
+    expect(r.pane.keysSeen.slice(keys)).toEqual([]);
+    expect(r.pane.queued).toEqual([]);
+    expect(r.holds.get(b)?.state).toBe("held");
   });
 });
