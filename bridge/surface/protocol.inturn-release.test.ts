@@ -37,6 +37,7 @@ import type { Surface } from "../../web/src/lib/surface/surface.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
+import { asJsonObject } from "../../web/src/lib/json.ts";
 import { HoldStore } from "./holds.ts";
 import { KeyGate } from "./key-gate.ts";
 import { RowRing, SendProtocol, SessionLocks, type SendRequest } from "./protocol.ts";
@@ -214,6 +215,8 @@ async function heldInTurn(r: Rig, text: string, over: Partial<SendRequest> = { f
 
 /** Polls that read the turn running, no modal, an empty box: what the person sees after answering the dialog. */
 const IN_TURN_FREE = { turn: "running", modal: "none", composer: "empty" } as const;
+/** The same reading as a whole Surface, for a poll that reads it while the pane itself shows something else. */
+const IN_TURN_FREE_SURFACE: Surface = { revision: 1, ...IN_TURN_FREE };
 
 describe("the fake Claude pane reads as Claude Code does", () => {
   test("a turn over an empty box reads running, no modal, empty; the dialog reads not free; the ended turn reads free", () => {
@@ -385,7 +388,7 @@ describe("INTURN: a held phone send goes into the running turn (owner, 2026-11-1
     // Every poll reads the turn free, but a dialog draws again before each release's own S0.
     let attempts = 0;
     for (let i = 0; i < 16; i++) {
-      for (const answer of await r.tick(IN_TURN_FREE as unknown as Surface)) {
+      for (const answer of await r.tick(IN_TURN_FREE_SURFACE)) {
         if (answer === null) continue;
         attempts++;
         expect(answer.receipt).toMatchObject({ requestId: id, outcome: "held", keys: [] });
@@ -430,7 +433,7 @@ describe("INTURN: a held phone send goes into the running turn (owner, 2026-11-1
       r.clock.now += 1000;
       sent.push(...(await r.tick()));
     }
-    expect(sent.find((answer) => answer !== null)?.receipt).toMatchObject({ requestId: id, outcome: "sent" });
+    expect(sent.find((one) => one !== null)?.receipt).toMatchObject({ requestId: id, outcome: "sent" });
     expect(r.pane.transcript.at(-1)).toBe("> from walky");
   });
 
@@ -439,7 +442,7 @@ describe("INTURN: a held phone send goes into the running turn (owner, 2026-11-1
     const id = await heldInTurn(r, "also check the lint output");
     let attempts = 0;
     for (let i = 0; i < 40; i++) {
-      for (const answer of await r.tick(IN_TURN_FREE as unknown as Surface)) {
+      for (const answer of await r.tick(IN_TURN_FREE_SURFACE)) {
         if (answer === null) continue;
         attempts++;
         expect(answer.receipt).toMatchObject({ requestId: id, outcome: "held", keys: [] });
@@ -516,8 +519,9 @@ describe("INTURN: a held phone send goes into the running turn (owner, 2026-11-1
     const before = rig();
     const id = await heldInTurn(before, "also check the lint output");
     const file = join(dir, "held", `${id}.json`);
-    const old = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
-    delete old.intoTurn;
+    const stored = asJsonObject(JSON.parse(readFileSync(file, "utf8")));
+    expect(stored).toBeDefined();
+    const old = Object.fromEntries(Object.entries(stored ?? {}).filter(([key]) => key !== "intoTurn"));
     writeFileSync(file, JSON.stringify(old), { mode: 0o600 });
     const r = rig({ pane: before.pane, clock: before.clock });
     expect(r.holds.get(id)?.state).toBe("held");
