@@ -2593,6 +2593,13 @@ const FREE_POLLS = 2;
  * request held for this (`HeldEntry.intoTurn`) goes on {@link FREE_POLLS} such polls in a row; its run
  * reads S0 fresh and takes the queued path, so a dialog that opens meanwhile still stops it before any key.
  */
+/**
+ * The most releases into a running turn one held request gets (review, 2026-11-12): a poll and S0 may read
+ * the box differently (a numbered list over the box reads strong to S0 only), and each such release spends
+ * no try. After these it waits for the turn to end, as every other hold does.
+ */
+const IN_TURN_RELEASES = 8;
+
 function intoTurnFree(surface: Surface): boolean {
   return surface.turn === "running" && surface.modal === "none" && surface.composer === "empty";
 }
@@ -2763,6 +2770,8 @@ export class SendProtocol {
   private readonly typedEmpty = new Map<string, { count: number; at: number }>();
   /** Releases that went back because their box was still starting ({@link RunState.startWait}): no turn can come from them. */
   private readonly startWaits = new Set<string>();
+  /** Per held request: its releases into a running turn so far ({@link IN_TURN_RELEASES}). In memory only. */
+  private readonly inTurnReleases = new Map<string, number>();
 
   constructor(private readonly deps: SendDeps) {
     this.now = deps.now ?? (() => Date.now());
@@ -3270,6 +3279,7 @@ export class SendProtocol {
       watch.sawRunning = true;
       return answer;
     }
+    this.inTurnReleases.delete(id);
     if (outcome === "sent" || outcome === "effective") holds.remove(id);
     else holds.end(id, outcome ?? "unknown", answer.receipt?.reason);
     return answer;
@@ -3332,6 +3342,7 @@ export class SendProtocol {
       watch.missing = generation === null ? watch.missing + 1 : 0;
       let busy = false;
       let next: HeldEntry | null = null;
+      let firstIntoTurn: HeldEntry | null = null;
       for (const entry of entries) {
         if (entry.state === "running" || this.inFlight.has(entry.id)) {
           busy = true;
@@ -3359,6 +3370,7 @@ export class SendProtocol {
           holds.setHarness(entry.id, agentOfGeneration(generation));
         }
         next ??= entry;
+        if (firstIntoTurn === null && entry.intoTurn === true && (this.inTurnReleases.get(entry.id) ?? 0) < IN_TURN_RELEASES) firstIntoTurn = entry;
       }
       if (next === null) {
         this.watches.delete(`${session}\u0000${paneId}`);
@@ -3435,14 +3447,19 @@ export class SendProtocol {
       const tried = watch.placeholderTried;
       const untried = tried === undefined || tried.box !== plainDraft || (tried.failed && now - tried.at >= PLACEHOLDER_RETRY_MS);
       const placeholder = plainDraft !== null && watch.plainDraft != null && now - watch.plainDraft.since >= DRAFT_LEFT_MS && untried;
-      // A person's message to a harness that takes one in a turn: into the turn, once the box reads free there.
-      const inTurn = next.intoTurn === true && watch.turnFreeReads >= FREE_POLLS;
+      // A person's message to a harness that takes one in a turn goes into the turn once the box reads
+      // free there, ahead of requests that wait for the turn's end (owner, 2026-11-12: every send reaches
+      // the terminal at once). A poll that reads the turn reads no free pane, so the turn rules above never
+      // hold on the same poll.
+      const inTurn = firstIntoTurn !== null && watch.turnFreeReads >= FREE_POLLS;
       if (busy || !(afterTurn || turnEnded || quiet || draftLeft || cleared || placeholder || inTurn)) continue;
-      if (this.deps.releaseCheck?.(next.id, session, paneId) === false) {
-        this.endHeld(next, "refused", "pane_gone");
+      const chosen = inTurn ? firstIntoTurn! : next;
+      if (this.deps.releaseCheck?.(chosen.id, session, paneId) === false) {
+        this.endHeld(chosen, "refused", "pane_gone");
         continue;
       }
-      started.push(this.releaseQuietly(next.id, inTurn && !(afterTurn || turnEnded || quiet || cleared)));
+      if (inTurn) this.inTurnReleases.set(chosen.id, (this.inTurnReleases.get(chosen.id) ?? 0) + 1);
+      started.push(this.releaseQuietly(chosen.id, inTurn));
     }
     return started;
   }
@@ -3466,6 +3483,7 @@ export class SendProtocol {
     const holds = this.deps.holds!;
     const record = this.deps.store.get(entry.id);
     const held = record?.receipt;
+    this.inTurnReleases.delete(entry.id);
     if (outcome === "cancelled") holds.remove(entry.id);
     else holds.end(entry.id, outcome, reason);
     if (record === null || held === undefined || record.phase !== "held") return null;
