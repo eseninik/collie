@@ -2508,6 +2508,8 @@ interface RunState {
   phase: string;
   /** The run of a held request (M56 spec 15): its `sent` also counts under `held_sent`. */
   released?: boolean;
+  /** A release into a running turn (`HeldEntry.intoTurn`): a pane not ready sends it back without spending a try. */
+  intoTurn?: boolean;
   /** The turn gate refused a command the profile never lets wait (`keys.neverHeld`): it is not held either. */
   neverHold?: boolean;
   /** A release met a box that answers the agent's question (`idle.answerPrompt`): it waits, and the try does not count. */
@@ -2546,6 +2548,8 @@ interface PaneWatch {
   sawRunning: boolean;
   /** Polls in a row that read the pane free. */
   freeReads: number;
+  /** Polls in a row that read the turn running over an empty box with nothing open at it ({@link intoTurnFree}). */
+  turnFreeReads?: number;
   /** When the first of those free polls came; null while the run is empty. */
   freeSince: number | null;
   /**
@@ -2582,6 +2586,16 @@ const PLACEHOLDER_UNPROVEN = "The box reads as a draft, and the probe could not 
 
 /** Polls in a row a pane must read free, after a running turn, before its oldest held request goes. */
 const FREE_POLLS = 2;
+
+/**
+ * Whether a poll reads a box that takes a send into the running turn (owner, 2026-11-12: every send
+ * reaches the terminal at once): the turn runs, nothing is open at the box and the box is empty. A
+ * request held for this (`HeldEntry.intoTurn`) goes on {@link FREE_POLLS} such polls in a row; its run
+ * reads S0 fresh and takes the queued path, so a dialog that opens meanwhile still stops it before any key.
+ */
+function intoTurnFree(surface: Surface): boolean {
+  return surface.turn === "running" && surface.modal === "none" && surface.composer === "empty";
+}
 /**
  * With no running turn read since the last release: the polls in a row, and the time they must span,
  * before the next held request goes anyway. A released command that starts no turn (/help, /status),
@@ -3129,7 +3143,12 @@ export class SendProtocol {
     const ahead = holds.waiting(target.session, target.paneId).at(-1)?.cause;
     const cause = end.extra.detail === HELD_BEHIND ? (ahead ?? "turn_running") : holdCauseOf(end);
     const unread = end.extra.detail === TURN_VERSION_UNREAD;
-    const input = { id: request.id, session: target.session, paneId: target.paneId, harness: target.harness, mode: request.mode, text: request.text, revision: request.revision ?? 0, command, waitsForTurn, cause, versionUnread: unread };
+    // A person's plain message to a harness that takes one in a turn need not wait for the turn's end:
+    // it goes once the box reads free in the turn (tickHolds). A command, an agent's message (walky
+    // talky, a hook, the CLI) and a marked send keep waiting for the turn as before.
+    const leads = state.match?.profile.reservedLeads ?? GENERIC_LEADS;
+    const intoTurn = request.fromPhone === true && request.mode === "send" && !command && request.draftHolds !== true && !unread && reservedLead(sendLines(request.text)[0] ?? "", leads) === null && queuesInTurn(state.match);
+    const input = { id: request.id, session: target.session, paneId: target.paneId, harness: target.harness, mode: request.mode, text: request.text, revision: request.revision ?? 0, command, waitsForTurn, cause, versionUnread: unread, intoTurn };
     if (request.draftHolds === true) {
       // A marked send keeps its caller's clock.
       holds.add(request.holdUntil === undefined ? { ...input, draftHolds: true } : { ...input, draftHolds: true, expiresAt: request.holdUntil });
@@ -3154,7 +3173,7 @@ export class SendProtocol {
     // expiry. So is a draft for a marked send (M62 spec 02): its own clock bounds it.
     const draft = end.reason === "draft_present" && entry?.draftHolds === true;
     // So is a box that is still starting: its own window bounds it.
-    const counted = state.answerWait !== true && state.startWait !== true && !draft;
+    const counted = state.answerWait !== true && state.startWait !== true && state.intoTurn !== true && !draft;
     if (entry === null || (counted && entry.tries + 1 >= HOLD_TRIES)) return this.settle(state, end);
     holds.putBack(state.record.id, counted);
     if (state.startWait === true) this.startWaits.add(state.record.id);
@@ -3206,7 +3225,7 @@ export class SendProtocol {
    * held (cancelled, already running, gone). The request file takes the pane's generation now: a session
    * id that resolved, or a /clear, since the hold is the same pane (the poll checked the agent).
    */
-  async release(id: string): Promise<SendAnswer | null> {
+  async release(id: string, intoTurn = false): Promise<SendAnswer | null> {
     const holds = this.deps.holds;
     const entry = holds?.get(id) ?? null;
     if (holds === undefined || entry === null || entry.state !== "held" || this.inFlight.has(id)) return null;
@@ -3216,6 +3235,7 @@ export class SendProtocol {
     watch.sawRunning = false;
     watch.freeReads = 0;
     watch.freeSince = null;
+    watch.turnFreeReads = 0;
     watch.pollSawRunning = false;
     watch.cleared = false;
     const record = this.deps.store.rearm(id, this.deps.generation(entry.paneId) ?? undefined);
@@ -3226,7 +3246,7 @@ export class SendProtocol {
     const base: SendRequest = { id, text: entry.text, mode: entry.mode, revision: entry.revision };
     const request: SendRequest = entry.draftHolds === true ? { ...base, draftHolds: true } : base;
     const target: SendTarget = { session: entry.session, paneId: entry.paneId, harness: entry.harness };
-    const work = this.run(request, record, target, true);
+    const work = this.run(request, record, target, true, intoTurn);
     this.inFlight.set(id, work);
     let answer: SendAnswer;
     try {
@@ -3365,6 +3385,7 @@ export class SendProtocol {
       // A free read clears a draft cause on a request no draft holds (live check W3): only a marked send is
       // held over a draft, and its own rule reads that cause.
       if (free) for (const entry of entries) if (entry.state === "held" && entry.draftHolds !== true && entry.cause === "draft_present") holds.setCause(entry.id, "not_free");
+      watch.turnFreeReads = surface !== undefined && intoTurnFree(surface) && !unseen ? (watch.turnFreeReads ?? 0) + 1 : 0;
       if (free) {
         watch.freeReads += 1;
         watch.freeSince ??= now;
@@ -3414,20 +3435,22 @@ export class SendProtocol {
       const tried = watch.placeholderTried;
       const untried = tried === undefined || tried.box !== plainDraft || (tried.failed && now - tried.at >= PLACEHOLDER_RETRY_MS);
       const placeholder = plainDraft !== null && watch.plainDraft != null && now - watch.plainDraft.since >= DRAFT_LEFT_MS && untried;
-      if (busy || !(afterTurn || turnEnded || quiet || draftLeft || cleared || placeholder)) continue;
+      // A person's message to a harness that takes one in a turn: into the turn, once the box reads free there.
+      const inTurn = next.intoTurn === true && watch.turnFreeReads >= FREE_POLLS;
+      if (busy || !(afterTurn || turnEnded || quiet || draftLeft || cleared || placeholder || inTurn)) continue;
       if (this.deps.releaseCheck?.(next.id, session, paneId) === false) {
         this.endHeld(next, "refused", "pane_gone");
         continue;
       }
-      started.push(this.releaseQuietly(next.id));
+      started.push(this.releaseQuietly(next.id, inTurn && !(afterTurn || turnEnded || quiet || cleared)));
     }
     return started;
   }
 
   /** {@link release} for the poll: a throw is a warning in the journal, never an unhandled rejection. */
-  private async releaseQuietly(id: string): Promise<SendAnswer | null> {
+  private async releaseQuietly(id: string, intoTurn = false): Promise<SendAnswer | null> {
     try {
-      return await this.release(id);
+      return await this.release(id, intoTurn);
     } catch (err) {
       console.warn(`[send] release of ${id} failed: ${err instanceof Error ? err.message : String(err)}`);
       return null;
@@ -3747,7 +3770,7 @@ export class SendProtocol {
    * One run of the steps. `release` marks the run of a held request (M56 spec 15): a refusal that means
    * "not yet" sends it back to its place in the queue instead of ending it.
    */
-  private async run(request: SendRequest, record: SendRecord, target: SendTarget, release = false): Promise<SendAnswer> {
+  private async run(request: SendRequest, record: SendRecord, target: SendTarget, release = false, intoTurn = false): Promise<SendAnswer> {
     const own = await this.deps.profile(target.harness, target.paneId);
     // A pane where a harness is starting is that harness's pane in waiting: its shell is not the place
     // for the text, and its input box is not there yet (the launch window).
@@ -3757,6 +3780,7 @@ export class SendProtocol {
     const state: RunState = {
       ...this.bareState(request, record, target, match),
       released: release,
+      intoTurn,
       starting: own === null ? expected !== null : starting !== null,
       startingNamed: own !== null && starting !== null,
     };
