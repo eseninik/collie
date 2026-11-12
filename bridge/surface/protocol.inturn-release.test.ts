@@ -15,6 +15,11 @@
 // draft wait for the turn to end. An in-turn release that meets a box not free at its own S0 presses
 // nothing, goes back to its place and spends none of the hold's tries (HOLD_TRIES = 5).
 //
+// Decisions after the blind review (INTURN-8..10): such a hold is released into a turn at most
+// IN_TURN_RELEASES (8) times; a phone send goes into the turn ahead of a queue head that may not
+// (the owner's words outrank the queue order); and the mark survives a bridge restart, while a held
+// file written before the mark existed waits for the turn to end.
+//
 // The hold is made the way a real pane makes one in a turn: Claude's permission dialog stands in the
 // box's place at S0 (`not_free`), then the person answers it and the turn runs on over an empty box.
 // The fake pane draws Claude Code's turn as the captures show it (claude--v2-1-310-queued-over-spinner):
@@ -22,7 +27,7 @@
 // the Claude profile, as the bridge's Surface does.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { muxAck, muxOk, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
@@ -156,9 +161,9 @@ function takesNothingInTurn(profile: Profile): Profile {
 
 let ids = 0;
 
-function rig(options: { version?: string | null; edit?: (profile: Profile) => Profile } = {}) {
-  const pane = new ClaudePane();
-  const clock = { now: 1_000_000 };
+function rig(options: { version?: string | null; edit?: (profile: Profile) => Profile; pane?: ClaudePane; clock?: { now: number } } = {}) {
+  const pane = options.pane ?? new ClaudePane();
+  const clock = options.clock ?? { now: 1_000_000 };
   const now = (): number => clock.now;
   const holds = new HoldStore(join(dir, "held"), now);
   const base = loadProfiles().get("claude")!;
@@ -427,5 +432,103 @@ describe("INTURN: a held phone send goes into the running turn (owner, 2026-11-1
     }
     expect(sent.find((answer) => answer !== null)?.receipt).toMatchObject({ requestId: id, outcome: "sent" });
     expect(r.pane.transcript.at(-1)).toBe("> from walky");
+  });
+
+  test("INTURN-8 in-turn releases that keep failing at S0 stop after exactly 8 (IN_TURN_RELEASES), spend no tries, and it goes after the turn", async () => {
+    const r = rig();
+    const id = await heldInTurn(r, "also check the lint output");
+    let attempts = 0;
+    for (let i = 0; i < 40; i++) {
+      for (const answer of await r.tick(IN_TURN_FREE as unknown as Surface)) {
+        if (answer === null) continue;
+        attempts++;
+        expect(answer.receipt).toMatchObject({ requestId: id, outcome: "held", keys: [] });
+      }
+    }
+    expect(attempts).toBe(8);
+    expect(r.pane.calls).toEqual([]);
+    expect(r.pane.keysSeen).toEqual([]);
+    expect(r.holds.get(id)?.state).toBe("held");
+    // It spent no HOLD_TRIES try on those in-turn attempts.
+    expect(r.holds.get(id)?.tries).toBe(0);
+    r.pane.answerDialog();
+    r.pane.endTurn();
+    const sent: (SendAnswer | null)[] = [];
+    for (let i = 0; i < 6 && r.holds.list().length > 0; i++) sent.push(...(await r.tick()));
+    expect(sent.find((answer) => answer !== null)?.receipt).toMatchObject({ requestId: id, outcome: "sent" });
+    expect(r.pane.transcript.at(-1)).toBe("> also check the lint output");
+    expect(r.holds.list()).toEqual([]);
+  });
+
+  for (const [label, headText, headOver, headSent] of [
+    ["a send without fromPhone", "a message from walky talky", {}, "> a message from walky talky"],
+    ["a phone command", "/compact", { mode: "command", fromPhone: true }, "> /compact"],
+  ] as const) {
+    test(`INTURN-9 a phone send behind a head that may not go into a turn (${label}) goes into the turn ahead of it; the head goes after the turn`, async () => {
+      const r = rig();
+      let head: string;
+      if (headOver.mode === "command") {
+        // A phone command is held only behind another held request: hold one, put the command behind it, cancel the first.
+        const ahead = await heldInTurn(r, "a send ahead of it");
+        head = `held-${String(++ids).padStart(6, "0")}`;
+        expect((await r.send(headText, { id: head, ...headOver })).receipt).toMatchObject({ outcome: "held", keys: [] });
+        expect(r.protocol.cancelHeld("main", "%1", ahead)).toMatchObject({ result: "cancelled" });
+      } else {
+        head = await heldInTurn(r, headText, headOver);
+      }
+      const phone = `held-${String(++ids).padStart(6, "0")}`;
+      expect((await r.send("and add a test for it", { id: phone, fromPhone: true })).receipt).toMatchObject({ outcome: "held", keys: [] });
+      expect(r.holds.list().map((entry) => entry.id)).toEqual([head, phone]);
+      r.pane.answerDialog();
+      expect(await r.tick()).toEqual([]);
+      const [released] = await r.tick();
+      expect(released?.receipt).toMatchObject({ requestId: phone, outcome: "sent", queued: true });
+      expect(r.pane.running).toBe(true);
+      expect(r.pane.queued).toEqual(["and add a test for it"]);
+      // The head stays held while the turn runs.
+      for (let i = 0; i < 6; i++) expect(await r.tick()).toEqual([]);
+      expect(r.holds.list().map((entry) => `${entry.id} ${entry.state}`)).toEqual([`${head} held`]);
+      r.pane.endTurn();
+      const sent: (SendAnswer | null)[] = [];
+      for (let i = 0; i < 8 && r.holds.list().length > 0; i++) sent.push(...(await r.tick()));
+      expect(sent.find((answer) => answer !== null)?.receipt).toMatchObject({ requestId: head, outcome: "sent" });
+      expect(r.pane.transcript.at(-1)).toBe(headSent);
+      expect(r.holds.list()).toEqual([]);
+    });
+  }
+
+  test("INTURN-10 after a bridge restart (a new HoldStore and SendProtocol over the same directory) the held phone send goes into the turn", async () => {
+    const before = rig();
+    const id = await heldInTurn(before, "also check the lint output");
+    // The bridge restarts: the pane and the clock go on, the stores are read back from disk.
+    const r = rig({ pane: before.pane, clock: before.clock });
+    expect(r.holds.get(id)?.state).toBe("held");
+    r.pane.answerDialog();
+    expect(await r.tick()).toEqual([]);
+    const [released] = await r.tick();
+    expect(released?.receipt).toMatchObject({ requestId: id, outcome: "sent", queued: true });
+    expect(r.pane.running).toBe(true);
+    expect(r.pane.queued).toEqual(["also check the lint output"]);
+    expect(r.holds.list()).toEqual([]);
+  });
+
+  test("INTURN-10 a held file written without the intoTurn field (an old entry) waits for the turn to end after the restart", async () => {
+    const before = rig();
+    const id = await heldInTurn(before, "also check the lint output");
+    const file = join(dir, "held", `${id}.json`);
+    const old = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+    delete old.intoTurn;
+    writeFileSync(file, JSON.stringify(old), { mode: 0o600 });
+    const r = rig({ pane: before.pane, clock: before.clock });
+    expect(r.holds.get(id)?.state).toBe("held");
+    r.pane.answerDialog();
+    for (let i = 0; i < 6; i++) expect(await r.tick()).toEqual([]);
+    expect(r.pane.calls).toEqual([]);
+    expect(r.pane.keysSeen).toEqual([]);
+    r.pane.endTurn();
+    const sent: (SendAnswer | null)[] = [];
+    for (let i = 0; i < 6 && r.holds.list().length > 0; i++) sent.push(...(await r.tick()));
+    expect(sent.find((answer) => answer !== null)?.receipt).toMatchObject({ requestId: id, outcome: "sent" });
+    expect(r.pane.transcript.at(-1)).toBe("> also check the lint output");
   });
 });
