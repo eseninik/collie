@@ -796,6 +796,11 @@ describe("SessionStream — queued sends from the receipts", () => {
     expect(container.querySelector("[data-slot='stream-unconfirmed']")).toBeNull();
   });
 
+  it.each(["claude", "codex"])("draws no journal waiting card on %s either (owner, 2026-11-14)", (agent) => {
+    const { container } = renderReceipts({ queued: ["from the log"] }, vi.fn(async () => true), agent);
+    expect(container.querySelector("[data-slot='stream-queued']")).toBeNull();
+  });
+
   it("draws nothing on a window that is not live", () => {
     const { container } = renderReceipts({ status: { kind: "unavailable", reason: "no-log" }, queuedSends: [QUEUED, BACK] });
     expect(container.querySelector("[data-slot='stream-queued-receipts']")).toBeNull();

@@ -689,6 +689,7 @@ export function SessionStream({
   const sendNowKeys = window.sendQueuedNow;
   const sendNow =
     onSendQueuedNow !== undefined && sendNowKeys.length > 0 ? () => onSendQueuedNow(sendNowKeys) : null;
+  const direct = directSendProfile(findProfile(loadProfiles(), agent ?? "")?.id);
 
   const status = window.status;
   const missing =
@@ -828,11 +829,12 @@ export function SessionStream({
           Not turns, because it is state — it appears, then it is gone (`chat-window.ts` § queued). It
           therefore wears the operator's OWN colour (the same well `UserTurn` uses) so the eye reads
           "mine, not yet sent" rather than "a turn nobody answered". */}
-      {window.queued.length > 0 && window.status.kind === "live" && (
+      {/* Claude and Codex send directly (direct-send.ts): the journal and the bridge still track their
+          queue, but neither draws a card (owner, 2026-11-14). */}
+      {window.queued.length > 0 && window.status.kind === "live" && !direct && (
         <QueuedCard queued={window.queued} sendNow={sendNow} />
       )}
-      {/* Claude and Codex send directly (direct-send.ts): the bridge still tracks their sends, but no card. */}
-      {window.queuedSends.length > 0 && window.status.kind === "live" && !directSendProfile(findProfile(loadProfiles(), agent ?? "")?.id) && (
+      {window.queuedSends.length > 0 && window.status.kind === "live" && !direct && (
         <ReceiptQueueCards rows={window.queuedSends} act={onReturned ?? null} />
       )}
 

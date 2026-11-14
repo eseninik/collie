@@ -3932,7 +3932,9 @@ describe("AgentChat — the chat body", () => {
 // view's. These cases pin the second half: the same answer draws the button on a device that may
 // write and withholds it on one that may not, and a tap goes through the ordinary keys route once.
 describe("AgentChat — Send now on the waiting card", () => {
-  const agent = () => ({ ...fixtureAgents[0]!, hasSession: true });
+  // Claude and Codex draw no waiting card (owner, 2026-11-14), so the card's button is tried on an agent
+  // that keeps it; the keys are the bridge's declaration below, not the agent's.
+  const agent = () => ({ ...fixtureAgents[0]!, agent: "muse", hasSession: true });
 
   /** The fixture window, plus a queue and the keys the bridge declares for it. */
   function answerWithQueue(declared: string[] | undefined) {
@@ -3992,7 +3994,8 @@ describe("AgentChat — Send now on the waiting card", () => {
     renderChat({
       agent: agent(),
       device: { enforced: true, device: "my-phone", authorized: true },
-      text: MENU_TEXT,
+      // The agent is muse (see `agent` above), so the dialog is muse's own approval screen.
+      text: readFileSync(join(import.meta.dirname, "..", "fixtures", "panes", "muse--approval-ls.txt"), "utf8"),
     });
     expect(await screen.findByText("Waiting to send")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Send now, the waiting messages" })).toBeNull();
