@@ -86,11 +86,12 @@ test("@oracle:reference CODEX_CHAT_STREAM_CARDS the captured five operations sur
 describe("@oracle:requirement unknown Code Mode never executes or invents data", () => {
   test.each([
     ["nested unsupported input", 'text(await tools.unknown({nested:{one:{two:{cmd:"false"}}}}));'],
-    ["nested dynamic object", 'text(await tools.exec_command({cmd:{nested:{value:(globalThis.__COLLIE_CODEMODE_TEST_CANARY__ = 1, "false")}}}));'],
+    ["nested dynamic object", 'text(await tools.exec_command({cmd:{nested:{value:(globalThis.__COLLIE_CODEMODE_TEST_CANARY__.value = 1, "false")}}}));'],
   ])("CODEX_CHAT_OBJECT_FALLBACK %s stays one raw card and leaves the reader intact", (_label, input) => {
     const key = "__COLLIE_CODEMODE_TEST_CANARY__";
     const previous = Object.getOwnPropertyDescriptor(globalThis, key);
-    Object.defineProperty(globalThis, key, { configurable: true, writable: true, value: 0 });
+    const canary = { value: 0 };
+    Object.defineProperty(globalThis, key, { configurable: true, writable: true, value: canary });
     try {
       const records = [
         { type: "custom_tool_call", call_id: "object_call", name: "exec", input },
@@ -98,7 +99,7 @@ describe("@oracle:requirement unknown Code Mode never executes or invents data",
       ].map((payload) => JSON.stringify({ timestamp: "2026-11-14T10:04:00.000Z", type: "response_item", payload }));
       const parsed = parseCodexTranscript(records.join("\n"));
       const calls = parsed.flatMap((entry) => entry.parts).filter((part) => part.kind === "tool");
-      expect(Reflect.get(globalThis, key)).toBe(0);
+      expect(canary.value).toBe(0);
       expect(calls).toHaveLength(1);
       if (calls[0]!.call?.kind === "execute") {
         expect(calls[0]!.call.command).toBe(input);
