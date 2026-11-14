@@ -4009,3 +4009,25 @@ running turn read (composer found, no card); these screens did not. Privacy: the
 | `codex--v0167-resume-tall--w120.txt` | `/resume` with one session: the title on row 1, the footer on rows 59 and 60 | menu (the title used to be out of reach) |
 | `codex--v0167-working--w120.txt` | A turn running: `• Working (4s • esc to interrupt) · 1 background terminal running`, the box, the status row, `← for agents · ? for shortcuts` | raw, composer found, no card |
 | `codex--v0167-command-center--w120.txt` | The agent command center, one task, a detail pane, `? help  esc back  ↑/↓ move  enter open  n new` | the unread-dialog card, by design |
+
+## Codex 0.169.0 phone conversation regression (captured 2026-11-14)
+
+Real captures from an empty `/tmp/collie-codex169-probe` folder, Codex 0.169.0 at low effort,
+inside a private `tmux -L collie-codex169` server. `capture-pane -p -e` preserves SGR bytes;
+the panes are 40 rows tall, with 120 or 80 columns as the filename records. No sanitizer or
+replacement changed the captured bytes. The prompts contain only disposable capture tasks.
+No arrow was sent to an idle composer; `/model` was typed only after a turn finished.
+
+| File | Keyboard state | Capture action |
+| --- | --- | --- |
+| `codex--v0169-idle--w120.txt` | idle, empty composer | Fresh session with its agents/shortcuts hint and warning |
+| `codex--v0169-idle-after-turn--w120.txt` | idle, empty composer | The disposable wait and queued reply finished |
+| `codex--v0169-idle-tip--w80.txt` | idle, empty composer | A resume tip remains above the composer, with a wrapped status row |
+| `codex--v0169-working--w120.txt` | running, empty composer | A disposable wait is still running |
+| `codex--v0169-working-queued--w120.txt` | running, empty composer | A wait is running with one queued input |
+| `codex--v0169-working-queued--w80.txt` | running, empty composer | The same queued input at 80 columns; the status path wraps to `probe` |
+| `codex--v0169-model-dialog--w120.txt` | dialog | `/model` shows the model picker after a completed turn |
+
+The Surface tests pin the keyboard state. The adapter tests also require the status continuation to
+remain in the status view and out of the draft. The phone tests use these same captures with the
+shared journal fixture, then exercise Enter and the image picker at 390 × 844.
