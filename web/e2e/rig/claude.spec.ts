@@ -178,8 +178,8 @@ test.describe("claude", () => {
         notes.push(`sent while the Surface read turn=${turn}: ${tapWords(t)}`);
         let sent = t.answers.find((answer) => answer.path === "/api/send");
         // Claude queues Enter during a turn (profile `enterWhileRunning: "queues"`): the first tap presses
-        // Enter into Claude's own queue, the receipt says `sent` with `queued`, and the Chat draws Claude's
-        // queued row with Send now. A hold here is the 1.24.1 defect (the prompt echo read as a menu), so
+        // Enter into Claude's own queue and the receipt says `sent` with `queued`. The Chat draws no queued
+        // row for Claude (direct send, owner 2026-11-14), so a row there fails the case. A hold here is the 1.24.1 defect (the prompt echo read as a menu), so
         // it fails the case. Only a turn that already ended before the tap may take the note as a plain send.
         const firstOutcome = sent?.outcome ?? "none";
         const queued = firstOutcome === "sent" && /"queued":\s*true/u.test(sent?.receipt ?? "");
@@ -187,14 +187,8 @@ test.describe("claude", () => {
         if (firstOutcome === "held") notes.push("HELD: the send was kept for the turn's end instead of going into Claude's queue");
         let queuedRow = false;
         if (queued) {
-          queuedRow = await page
-            .locator('[data-slot="stream-queued"]')
-            .filter({ hasText: "PINEAPPLE-OK" })
-            .first()
-            .waitFor({ state: "visible", timeout: 20_000 })
-            .then(() => true)
-            .catch(() => false);
-          notes.push(queuedRow ? "the Chat drew Claude's queued row with the note" : "no queued row with the note in the Chat (the queue may have drained first)");
+          queuedRow = (await page.locator('[data-slot="stream-queued"]').count()) > 0;
+          notes.push(queuedRow ? "QUEUED ROW: the Chat drew a waiting card on Claude" : "no waiting card in the Chat, as for every direct send");
         } else if (idleSend) {
           notes.push("the turn had ended before the tap: the note went in as a plain send");
         }
@@ -224,12 +218,12 @@ test.describe("claude", () => {
         const shot = await capture(page, "claude-4-stream-send");
         const screen = await captureScreen(rig, pane, "claude-4-stream-send");
         const wentIn = settled !== null && (settled.outcome === "sent" || settled.outcome === "effective");
-        // The first tap must do it: into Claude's queue, seen as its row in the Chat or, when a fast answer
-        // drained the queue before the check, as the note landed in the transcript after the turn; or a
-        // plain send on a turn that had ended. A send that needed the Submit offer, or a hold, fails the case.
-        const drained = queued && !queuedRow && echoes >= 1;
-        if (drained) notes.push("the queue drained before the Chat check: the note landed after the turn");
-        const firstTap = (queued && (queuedRow || drained)) || idleSend;
+        // The first tap must do it: into Claude's queue with no waiting card in the Chat, seen as the note
+        // landed in the transcript after the turn; or a plain send on a turn that had ended. A send that
+        // needed the Submit offer, a waiting card, or a hold fails the case.
+        const landed = queued && !queuedRow && echoes >= 1;
+        if (landed) notes.push("the queued note landed after the turn");
+        const firstTap = landed || idleSend;
         const verdict = t.worked && firstTap && !heldCard && wentIn && reply && echoes === 1 ? "pass" : "fail";
         return { verdict, taps: log.length, minTaps: 2, note: notes.join("; "), taps_log: log, captures: [shot, screen] };
       } finally {

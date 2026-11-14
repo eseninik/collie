@@ -3951,8 +3951,31 @@ describe("AgentChat — Send now on the waiting card", () => {
       queued: ["first", "second"],
     };
     if (declared !== undefined) body.sendQueuedNow = declared;
-    server.use(http.get(/\/api\/pane\/[^/]+\/chat/, () => HttpResponse.json(body)));
+    const served = { count: 0 };
+    server.use(http.get(/\/api\/pane\/[^/]+\/chat/, () => {
+      served.count += 1;
+      return HttpResponse.json(body);
+    }));
+    return served;
   }
+
+  it.each(["claude", "codex"])("draws no waiting card and no Send now on %s, even with declared keys", async (name) => {
+    const served = answerWithQueue(["ctrl+Enter"]);
+    const sent: unknown[] = [];
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, async ({ request }) => {
+        sent.push(await request.json());
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderChat({ agent: { ...agent(), agent: name }, device: { enforced: true, device: "my-phone", authorized: true } });
+    await waitFor(() => expect(served.count).toBeGreaterThan(0));
+    // A poll after the answer: the chat had its turn to draw the queue.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(screen.queryByText("Waiting to send")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Send now, the waiting messages" })).toBeNull();
+    expect(sent).toHaveLength(0);
+  });
 
   it("draws the button for a device that may write and sends the declared keys once", async () => {
     answerWithQueue(["ctrl+Enter"]);
