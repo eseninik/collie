@@ -403,9 +403,9 @@ describe("sendReceiptsRoute: a refusal's line and Surface words (2026-10-17 fiel
       const { audit } = auditLines();
       const context = { audit, device: null, redact: false, acceptEncoding: null };
       await sendRoute(rt, { id: "route-ok-0001", pane: "%1", text: "a private first message" }, context);
-      // Someone typed at the desk: the next send meets a draft and is refused.
+      // Slash commands retain the guarded draft refusal; ordinary phone messages replace it.
       await pane.typeText("%1", "half a private thought");
-      const res = await sendRoute(rt, { id: "route-no-0001", pane: "%1", text: "a private second message" }, context);
+      const res = await sendRoute(rt, { id: "route-no-0001", pane: "%1", text: "/compact a private second message", mode: "command" }, context);
       const answer = await res.json();
       expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
       expect(answer.receipt.detail).toEqual(expect.any(String));
@@ -416,7 +416,7 @@ describe("sendReceiptsRoute: a refusal's line and Surface words (2026-10-17 fiel
       expect(listed.receipts[1].detail).toBeUndefined();
       expect(listed.receipts[1].saw).toBeUndefined();
       // Both rows carry their own text as a line; the draft someone typed at the desk is a screen row and never listed.
-      expect(listed.receipts[0].line).toBe("a private second message");
+      expect(listed.receipts[0].line).toBe("/compact a private second message");
       expect(listed.receipts[1].line).toBe("a private first message");
       expect(JSON.stringify(listed)).not.toContain("half a private thought");
     } finally {

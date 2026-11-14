@@ -3560,10 +3560,10 @@ describe("AgentChat — a card docks above the belt (ADR 0059)", () => {
 // bottom region, whose rows are the only things that could have grown.
 describe("AgentChat — the terminal draft notice floats (ADR 0061)", () => {
   const withHostDraft = (draft: string) =>
-    paneTextWithDraft("recent pane output").replace(/^❯ .*$/m, `❯ ${draft}`);
+    readFileSync(join(import.meta.dirname, "..", "fixtures", "panes", "pi--v0851-draft.txt"), "utf8").replace("collie stock pi draft probe", draft);
 
   it("renders in the mirror's own slot, never in the bottom region", async () => {
-    const { container } = renderChat({ text: withHostDraft("typed on the host") });
+    const { container } = renderChat({ agent: { ...fixtureAgents[0]!, agent: "pi" }, text: withHostDraft("typed on the host") });
     await screen.findByText(/draft in terminal/i, undefined, { timeout: 4000 });
 
     const slot = container.querySelector('[data-slot="draft-notice-slot"]')!;
@@ -3582,7 +3582,7 @@ describe("AgentChat — the terminal draft notice floats (ADR 0061)", () => {
 
   it("the x hides it without moving anything into the flow", async () => {
     const user = userEvent.setup();
-    const { container } = renderChat({ text: withHostDraft("typed on the host") });
+    const { container } = renderChat({ agent: { ...fixtureAgents[0]!, agent: "pi" }, text: withHostDraft("typed on the host") });
     await screen.findByText(/draft in terminal/i, undefined, { timeout: 4000 });
 
     await user.click(screen.getByRole("button", { name: "Dismiss the terminal draft notice" }));

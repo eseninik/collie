@@ -1,3 +1,7 @@
+// These historical hold-release rules now run on a non-direct test profile with
+// Claude's frame. Actual Claude/Codex phone sends bypass holds (owner 2026-11-14);
+// their current behavior is pinned in protocol.test.ts.
+//
 // A held phone send goes into a running turn (owner's case, 2026-11-12).
 //
 // On a Claude Code pane (2.1.322) a person's send from the phone during a running turn was held
@@ -171,7 +175,10 @@ function rig(options: { version?: string | null; edit?: (profile: Profile) => Pr
   const now = (): number => clock.now;
   const holds = new HoldStore(join(dir, "held"), now);
   const base = loadProfiles().get("claude")!;
-  const profile = options.edit === undefined ? base : options.edit(base);
+  // Keep the hold-release mechanics on an explicitly non-direct profile. Claude/Codex
+  // phone sends bypass this store; protocol.test.ts pins those real-profile paths.
+  const original = options.edit === undefined ? base : options.edit(base);
+  const profile = { ...original, id: "hold-release-test" };
   const version = options.version === undefined ? OWNER_VERSION : options.version;
   const lookup: ProfileForOptions = { log: () => undefined, profiles: new Map([["claude", profile]]) };
   const protocol = new SendProtocol({
@@ -352,7 +359,7 @@ describe("INTURN: a held phone send goes into the running turn (owner, 2026-11-1
     expect(r.pane.keysSeen).toEqual([]);
   });
 
-  test("INTURN-5 Claude with a version Collie could not read: a held phone send waits for the turn to end", async () => {
+  test("INTURN-5 a non-direct Claude-shaped profile with a version Collie could not read: a held phone send waits for the turn to end", async () => {
     const r = rig({ version: null });
     r.pane.running = true;
     const id = "held-unread-01";

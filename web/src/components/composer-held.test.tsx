@@ -457,6 +457,7 @@ describe("the held-send card floats", () => {
     document.body.append(slot);
     try {
       renderComposer({
+        agent: "pi",
         draftNoticeSlot: slot,
         terminalDraft: "typed in the terminal",
         rawTerminalDraft: "typed in the terminal",
