@@ -16,6 +16,8 @@ export function comparisonTranscript(harness: ChatHarness) {
 }
 
 export async function openComparisonChat(page: Page, harness: ChatHarness) {
+  await page.addInitScript(() => localStorage.setItem("collie:theme:v1", "dark"));
+  await page.emulateMedia({ colorScheme: "dark" });
   await pinLocale(page, "en");
   await installApiStub(page);
   const template = fixtureAgents.find((candidate) => candidate.agent === harness);
@@ -30,6 +32,8 @@ export async function openComparisonChat(page: Page, harness: ChatHarness) {
     canSteer: true,
     model: harness === "codex" ? "gpt-6-sol" : "claude-opus-5-5",
     effort: "medium",
+    // The 7d caption is a limit window (ModelTag public tests), not a session-age field.
+    usage: { limits: [{ window: "7d", used: 80 }] },
   };
   const entries = comparisonTranscript(harness);
   const snapshot: SnapshotResponse = { ...fixtureSnapshot, agents: [agent], shellPanes: [] };
