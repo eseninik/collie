@@ -29,6 +29,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **Codex Chat shows images, command results and file changes.** Read recorded image bytes, process exits and patch diffs into the same cards as Claude, including straight-line Codex 0.169 Code Mode batches.
 
+- **Codex keeps failed tool runs visible when output is empty.** Keep the wrapper's recorded completion code on its original card without assigning it to a nested command.
+
 ## [1.28.4] - 2026-11-14
 
 ### Fixed

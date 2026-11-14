@@ -69,13 +69,18 @@ function textOf(block: JsonValue): string {
   return record(block) && typeof block.text === "string" ? block.text : "";
 }
 
+/** Empty carrier text is not a recorded nested result to pair with a shell command. */
+function execOutputBlocks(raw: JsonValue[], hasTrailer: boolean): JsonValue[] {
+  const blocks = raw.slice(1, hasTrailer ? -1 : undefined);
+  return blocks.some((block) => textOf(block) !== "" || codexImage(block) !== null) ? blocks : [];
+}
+
 /** A recognized wrapper; its result blocks keep the same order as the recorded straight-line calls. */
 export function codexExecEnvelope(raw: JsonValue | undefined): { blocks: JsonValue[]; exitCode?: number } | null {
   if (!Array.isArray(raw) || raw.length < 2 || !EXEC_PREAMBLE.test(textOf(raw[0]!))) return null;
   const trailer = raw.length >= 3 ? EXEC_TRAILER.exec(textOf(raw.at(-1)!)) : null;
-  const blocks = raw.slice(1, trailer === null ? undefined : -1);
-  const hasOutput = blocks.some((block) => textOf(block) !== "" || codexImage(block) !== null);
-  if (!hasOutput) return null;
+  const blocks = execOutputBlocks(raw, trailer !== null);
+  if (blocks.length === 0 && trailer === null) return null;
   return trailer === null ? { blocks } : { blocks, exitCode: Number(trailer[1]) };
 }
 
