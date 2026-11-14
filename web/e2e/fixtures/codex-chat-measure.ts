@@ -4,12 +4,15 @@ import type { Page } from "@playwright/test";
 // inheriting a sibling's style or receiving an invented value.
 export async function captureChatStyles(page: Page) {
   return page.evaluate(() => {
+    // Keep style reads in this browser document; helpers are serialized with this evaluate body.
+    const browserWindow = document.defaultView;
+    if (browserWindow === null) throw new Error("the measurement document has no window");
     const stream = document.querySelector('[data-slot="session-stream"]');
     const exactText = (text: string) => [...(stream?.querySelectorAll<HTMLElement>("*") ?? [])]
       .find((element) => element.childElementCount === 0 && element.textContent?.trim() === text) ?? null;
     const styleOf = (element: Element | null) => {
       if (element === null) return null;
-      const style = getComputedStyle(element);
+      const style = browserWindow.getComputedStyle(element);
       const rect = element.getBoundingClientRect();
       return {
         tag: element.tagName,

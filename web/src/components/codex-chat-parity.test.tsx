@@ -19,7 +19,7 @@ beforeAll(() => {
 
 function renderChat(harness: "codex" | "claude") {
   const feed: ChatFeed = {
-    window: { ...EMPTY_CHAT_WINDOW, status: { kind: "live" }, entries: chatComparisonEntries(harness).map((entry, index) => ({ ...entry, seq: 1_000_000 + index })) },
+    window: { ...EMPTY_CHAT_WINDOW, status: { kind: "live" }, entries: chatComparisonEntries(harness).map((entry, index) => Object.assign({}, entry, { seq: 1_000_000 + index })) },
     loadOlder: vi.fn(), loadingOlder: false, asked: 1, answered: 1, tried: true,
   };
   return render(<MemoryRouter><SessionStream feed={feed} address="w1:p1" working showToolCalls showCompactions={false} fontSize={16} listRef={createRef<ChatMessageListHandle>()} agent={harness} /></MemoryRouter>);
@@ -33,16 +33,16 @@ for (const harness of ["claude", "codex"] as const) {
       expect(container.querySelectorAll("ol > li")).toHaveLength(2);
       expect(container.querySelectorAll("ul > li")).toHaveLength(2);
       expect(container.querySelector("pre")).toHaveTextContent('export const greeting = "Hello";');
-      const user = within(container).getByText("Сделай приветствие и проверь результат.").closest("[data-block]");
-      expect(user).not.toBeNull();
-      expect(within(user as HTMLElement).getByText("You", { exact: true })).toBeInTheDocument();
-      expect(within(user as HTMLElement).getByText(/\b\d{1,2}:\d{2}\b/)).toBeVisible();
+      const user = within(container).getByText("Сделай приветствие и проверь результат.").closest<HTMLElement>("[data-block]");
+      if (user === null) throw new Error("the user message must be inside a stream block");
+      expect(within(user).getByText("You", { exact: true })).toBeInTheDocument();
+      expect(within(user).getByText(/\b\d{1,2}:\d{2}\b/)).toBeVisible();
     });
 
     it("@req:CODEX_CHAT_RUNNING shows the running turn without old send decisions", () => {
       const { container } = renderChat(harness);
       expect(within(container).getByText("Still working…", { exact: true })).toBeInTheDocument();
-      for (const name of ["Submit", "Discard", "Add to it", "Replace", "Send now"]) expect(within(container).queryByRole("button", { name, exact: true })).not.toBeInTheDocument();
+      for (const name of ["Submit", "Discard", "Add to it", "Replace", "Send now"]) expect(within(container).queryByRole("button", { name })).not.toBeInTheDocument();
       expect(within(container).queryByText("Draft in terminal", { exact: true })).not.toBeInTheDocument();
     });
 
@@ -68,7 +68,7 @@ describe("@oracle:requirement mapped Codex tool details", () => {
     expect(container.querySelector("pre")).toBeNull();
     await userEvent.click(within(container).getByRole("button", { expanded: false }));
     expect(container.querySelector("pre")).toHaveTextContent("output line 080");
-    await userEvent.click(within(container).getByRole("button", { name: "Show all 80 lines", exact: true }));
+    await userEvent.click(within(container).getByRole("button", { name: "Show all 80 lines" }));
     expect(container.querySelector("pre")).toHaveTextContent("output line 001");
     expect(container.querySelector("pre")).toHaveTextContent("output line 080");
   });

@@ -23,6 +23,7 @@ describe("@oracle:requirement Codex chat uses the data present in the journal", 
     expect(entries[0]).toMatchObject({ role: "user", ts: "2026-11-14T10:00:00.000Z" });
     expect(entries[0]!.parts).toContainEqual({ kind: "text", text: "Сделай приветствие и проверь результат." });
     const reference = parseClaudeTranscript(raw("claude")).flatMap((entry) => entry.parts).find((part) => part.kind === "text" && part.text.startsWith("## Проверка"));
+    if (reference === undefined) throw new Error("the Claude fixture must carry the reference Markdown");
     expect(parts()).toContainEqual(reference);
   });
 
@@ -55,8 +56,18 @@ describe("@oracle:requirement Codex chat uses the data present in the journal", 
   });
 
   test("CODEX_CHAT_IMAGES keeps pasted image bytes and the image returned by view_image", () => {
-    const source = JSON.parse(raw("codex").split("\n")[1]!) as { payload: { content: { type: string; image_url?: string }[] } };
-    const url = source.payload.content.find((part) => part.type === "input_image")?.image_url;
+    const source: unknown = JSON.parse(raw("codex").split("\n")[1]!);
+    if (typeof source !== "object" || source === null || !("payload" in source)) throw new Error("missing fixture payload");
+    const payload = source.payload;
+    if (typeof payload !== "object" || payload === null || !("content" in payload) || !Array.isArray(payload.content)) throw new Error("missing fixture content");
+    let imageUrl: string | undefined;
+    for (const item of payload.content) {
+      const image: unknown = item;
+      if (typeof image !== "object" || image === null || !("type" in image) || image.type !== "input_image") continue;
+      if ("image_url" in image && typeof image.image_url === "string") imageUrl = image.image_url;
+    }
+    if (imageUrl === undefined) throw new Error("missing fixture image URL");
+    const url = imageUrl;
     expect(url).toStartWith("data:image/png;base64,");
     expect(parseCodexTranscript(raw("codex"))[0]!.parts).toContainEqual({ kind: "image", url, mimeType: "image/png" });
     expect(tool("call_image").result?.imageUrl).toBe(url);
