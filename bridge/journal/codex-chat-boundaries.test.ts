@@ -20,12 +20,14 @@ function sourceScript(source: string): string {
 
 describe("@oracle:requirement Code Mode empty text preserves an explicit process status", () => {
   test.each([
-    { name: "empty-seven", command: "exit 7", exitCode: 7, failed: true },
-    { name: "empty-zero", command: "true", exitCode: 0, failed: false },
-  ])("CODEX_CHAT_EMPTY_RESULT $name keeps empty output and its own exit status", ({ name, command, exitCode, failed }) => {
-    const parts = toolsIn(fixture(name));
+    { name: "empty-seven", exitCode: 7, failed: true },
+    { name: "empty-zero", exitCode: 0, failed: false },
+  ])("CODEX_CHAT_EMPTY_RESULT $name keeps empty output and its own exit status", ({ name, exitCode, failed }) => {
+    const source = fixture(name);
+    const parts = toolsIn(source);
     expect(parts).toHaveLength(1);
-    expect(parts[0]!.call).toMatchObject({ kind: "execute", command, exitCode });
+    expect(parts[0]!.id).toBe(`call_${name.replaceAll("-", "_")}`);
+    expect(parts[0]!.call).toMatchObject({ kind: "execute", command: sourceScript(source), exitCode });
     expect(parts[0]!.result?.text).toBe("");
     if (failed) expect(parts[0]!.result?.isError).toBe(true);
     else expect(parts[0]!.result).not.toHaveProperty("isError");
