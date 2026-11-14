@@ -5430,8 +5430,12 @@ export class SendProtocol {
         // A person's direct message submits through redraw and compare differences. A modal,
         // another screen or a missing box still stops it. Keep Codex's existing mismatch fix for
         // other callers too.
-        const safeDirect = direct && snap.frame !== null && read !== "modal_cue" && read !== "other_screen";
-        const verdict = safeDirect || (read === "mismatch" && retrySubmitProfile(state.match?.profile.id)) ? "pass" : read;
+        // Only once the paste has landed: a box that still reads as at S0 has not taken the text yet,
+        // and a submit key then is swallowed while Codex is still taking the paste (2026-11-14).
+        const landed = snap.frame !== null && s0.frame !== null && wsFree(boxText(snap.frame)).length > 0 &&
+          wsFree(boxText(snap.frame)) !== wsFree(boxText(s0.frame));
+        const safeDirect = direct && landed && read !== "modal_cue" && read !== "other_screen";
+        const verdict = safeDirect || (read === "mismatch" && landed && retrySubmitProfile(state.match?.profile.id)) ? "pass" : read;
         if (verdict === "other_screen") {
           // Not the conversation's box: it does not come back by itself, and Enter there starts a new session.
           why = "changed";
