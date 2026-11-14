@@ -4987,14 +4987,11 @@ describe("AgentChat: the header line of a durable pane (M53 spec 12)", () => {
 });
 
 
-// M53 spec 12: the prompt pin (PR 406) under the two-line header. The pin is an overlay hung from the top
-// edge of the thread's own scrollport, so with the progress row and both strips gone on a durable pane it
-// sits right under the header's rule: inside the thread's box, never in the header, and over nothing but the
-// thread. jsdom lays nothing out, so each block gets a 100px row and the reader has scrolled 150px.
-describe("AgentChat: the prompt pin under a durable pane's header line", () => {
+// Owner requirement NO-PROMPT-PIN supersedes the old prompt-pin placement contract.
+describe("AgentChat — unobstructed history @oracle:requirement @req:NO-PROMPT-PIN", () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it("header line: the pin hangs from the thread's top edge, under the header, with no strip or progress row between", async () => {
+  it("keeps a durable pane's header and conversation visible with no prompt banner or top overlay", async () => {
     server.use(
       http.get("/api/config", () =>
         HttpResponse.json({
@@ -5018,22 +5015,20 @@ describe("AgentChat: the prompt pin under a durable pane's header line", () => {
     };
     const sibling: AgentView = { ...agent, paneId: "w1:p7" };
     const { container } = renderChat({ agent, agents: [agent, sibling], tabs: fixtureTabs });
+    await screen.findAllByText("what changed today?");
     await waitFor(() => expect(screen.queryByRole("navigation", { name: "Panes" })).toBeNull());
-    const pin = await waitFor(() => {
-      const found = container.querySelector<HTMLElement>('[data-slot="prompt-pin"]');
-      expect(found).not.toBeNull();
-      return found!;
-    });
-    expect(pin).toHaveTextContent("what changed today?");
-    // Never in the header: the header holds the title and the one line under it.
-    const header = container.querySelector("header")!;
-    expect(header.contains(pin)).toBe(false);
+    expect(container.querySelector('[data-block]')).toHaveTextContent("what changed today?");
     expect(container.querySelector('[data-slot="pane-place"]')).toHaveTextContent("Step 1 of 2: look it up");
-    // Hung from the scrollport's own top edge: the overlay is the scroller's sibling, at top 0.
-    const overlay = pin.parentElement!;
-    expect(overlay).toHaveClass("absolute", "top-0");
-    expect(overlay.previousElementSibling).toHaveClass("overflow-y-auto");
-    // And nothing stands between the header and that edge: no strip, no progress row, no bar.
+    expect(container.querySelector('[data-slot="prompt-pin"]')).toBeNull();
+    expect(screen.queryByText("Asked further back")).toBeNull();
+    const block = container.querySelector<HTMLElement>("[data-block]")!;
+    const scrollport = block.parentElement!;
+    fireEvent.scroll(scrollport, { target: { scrollTop: 250 } });
+    expect(container.querySelector('[data-slot="prompt-pin"]')).toBeNull();
+    const topOverlays = [...scrollport.parentElement!.children].filter(
+      (node) => node !== scrollport && node.classList.contains("absolute") && node.classList.contains("top-0"),
+    );
+    expect(topOverlays).toHaveLength(0);
     expect(screen.queryByRole("navigation", { name: "Tabs" })).toBeNull();
     expect(container.querySelector('[data-slot="pane-progress"]')).toBeNull();
     expect(container.querySelector('[role="progressbar"]')).toBeNull();
