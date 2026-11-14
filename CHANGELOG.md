@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Changed
 
 - **Claude and Codex send phone messages directly into the terminal.** Ordinary messages replace a leftover draft and use the agent's native queue during a turn. The composer sends on Enter, hides terminal-draft recovery controls and failure cards, and follows an older bridge's Replace and Submit offers once each. Dialogs, missing input boxes and cap confirmation still stop a send; Codex gets one extra submit key when its first one is swallowed.
+- **The conversation no longer pins an earlier question above it.** Remove the automatic question banner and its reserved space; older messages remain available through the history button.
 
 ### Fixed
 
