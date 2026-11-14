@@ -27,6 +27,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **Codex conversations stay readable with a wrapped status line.** Recognise Codex 0.169 screens on the phone, retain both status rows, and keep real dialogs blocking sends.
 
+- **Codex Chat shows images, command results and file changes.** Read recorded image bytes, process exits and patch diffs into the same cards as Claude, including straight-line Codex 0.169 Code Mode batches.
+
 ## [1.28.4] - 2026-11-14
 
 ### Fixed
