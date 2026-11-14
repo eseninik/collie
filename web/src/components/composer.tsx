@@ -34,7 +34,9 @@ import { BottomSheet } from "@/components/ui/sheet";
 import { SendOfferStrip } from "@/components/send-offer-strip";
 import { HeldCard, type HeldAction } from "@/components/composer-held";
 import { offerMode, type SendNote } from "@/lib/send-protocol";
-import { modeFor, sendText } from "@/lib/reply-action";
+import { findProfile, loadProfiles } from "@/lib/surface/profile";
+import { directSendProfile } from "@/lib/surface/profiles/direct-send";
+import { modeFor, sendText, type ReplyIntent } from "@/lib/reply-action";
 import { fieldLocked, sendSlot, unreachable } from "@/lib/send-slot";
 import { wayOut } from "@/lib/way-out";
 import type { Surface } from "@/lib/surface/surface";
@@ -42,7 +44,6 @@ import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
 import { detectNoEchoPrompt } from "@/lib/no-echo";
 import type { HeldRow, SendMode, SendOffer, SendWhen } from "@/lib/surface/send";
-import type { IntentId } from "@/lib/durable-control";
 import { Notice, NOTICE_ACTION } from "@/components/ui/notice";
 import { ActionRow } from "@/components/action-sheet-rows";
 import { AnchoredMenu } from "@/components/ui/anchored-menu";
@@ -751,7 +752,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   }, [scope, scopeId, paneId]);
   const [sending, setSending] = useState(false);
   // The Send Protocol's held intent (its request id) and the offers its last answer made (M56 spec 05).
-  const protocolIntent = useRef<IntentId | null>(null);
+  const protocolIntent = useRef<ReplyIntent | null>(null);
   // A send that ended `unknown`, remembered until the journal settles it (#511, lib/unknown-send.ts):
   // the person may submit the stranded text by hand, and the user turn landing in Chat is then the
   // proof it went through. Memory only, like the notice it retires; a new send replaces it.
@@ -1207,6 +1208,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // draft helpers below stay harness-free: they take the capability, never the grammar. Undefined for
   // any agent without an adapter, which is exactly the "no idea" case those helpers already handle.
   const adapter = adapterFor(agent ?? undefined);
+  const profileId = findProfile(loadProfiles(), agent ?? "")?.id;
+  const directMessages = directSendProfile(profileId);
 
   // Guard against a false stranded-draft: if the detected draft is what we JUST sent, it's our own
   // reply still echoing on the "❯" line before the bridge's Enter, so suppress the preview. Applied
@@ -1345,6 +1348,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // or sent, not a fresh one to re-show. Not gated on `locked`: read-only devices get the preview +
   // Take over (a local text copy); only the actual Send stays gated.
   const showPreview =
+    !directMessages &&
     !gone &&
     !sending &&
     previewLatched &&
@@ -1402,7 +1406,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // sheet. It floats with the others, under the held card, so it moves nothing; the cross keeps it quiet
   // until the streak ends. Off on a crew member's pane (the next slice) and when Settings turned it off.
   const reportCard =
-    reportOn && reportCount > 0 ? (
+    !directMessages && reportOn && reportCount > 0 ? (
       <ReportCard
         count={reportCount}
         onReport={() => openReport({ paneId, scope, requestIds: streakIds(reportKey) })}
@@ -1661,10 +1665,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // every early return below has to answer honestly.
   //
   // THE ONE TEXT PATH (M56 spec 06). Every text goes to the bridge as one Send Protocol request: the
-  // bridge reads the screen fresh, refuses a dialog, a draft or a screen it cannot read before any key,
+  // bridge reads the screen fresh and refuses a dialog or a missing input box before any key.
   // probes where it must, and answers with a receipt. The phone reads nothing before a send and sends
-  // no key of its own: no pre-flight, no type-then-verify, no sweep of a stranded draft (a draft in
-  // the box is refused `draft_present` and offered Add, Replace or Cancel). A text that starts with a
+  // no key of its own. Direct profiles replace leftovers and consume old-bridge recovery offers
+  // once each; other profiles keep their draft offers. A text that starts with a
   // reserved lead (`/`, `!`, `@`) goes as a `command`, whose popup under the box is expected.
   async function send(value: string, isDraft: boolean, when?: SendWhen): Promise<boolean> {
     // A shell line keeps its leading space or tab, which keeps it out of Sent (M61): the bridge checks
@@ -1710,7 +1714,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // The operator has just acted on this pane, so the poller should watch it land, from the tap on.
     stampSend(paneId);
     try {
-      const res = await sendText({ paneId, text: t, scope, mode, rowsHash, capAck, resendOf: resend?.oldId, when, held: protocolIntent.current });
+      const res = await sendText({ paneId, profileId, text: t, scope, mode, rowsHash, capAck, resendOf: resend?.oldId, when, held: protocolIntent.current });
       if (res.status === "noAnswer") {
         // No answer: the id stays, so the next tap on the same text asks for the same request.
         protocolIntent.current = res.intent;
@@ -1735,11 +1739,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         return true;
       }
       // A resend makes no offer: an offer would carry the row's text, which may be masked.
-      const offered = reading.offers.length > 0 && resend === undefined;
+      // Direct profiles never show draft/submit recovery controls. Commands keep their path;
+      // the cap still needs the person's explicit confirmation.
+      const directMessage = directMessages && mode === "send" && when !== "steer";
+      const offered = reading.offers.length > 0 && resend === undefined && (!directMessage || reading.cap !== null);
       setProtocolOffer(offered ? { text: t, isDraft, rowsHash: reply.rowsHash, offers: reading.offers, capAck: reading.cap !== null } : null);
-      const refusal = readingRefusal(reading);
+      const hardStop = directMessage && reading.note === "typed" && (reply.reason === "modal_cue" || reading.toCard || reading.offers.length === 0 || reply.detail !== null);
+      const refusal = readingRefusal(hardStop ? { ...reading, note: "notFree" } : reading);
+      const recoveryNote = !hardStop && directMessage && reading.cap === null && (reading.note === "typed" || reading.note === "draft" || reading.note === "draftCommand");
       setSendRefusal(
-        returnedDraft && reading.note === "draft" ? { ...refusal, sentence: translate("composer.protocol.draftIsReturned") } : refusal,
+        recoveryNote ? null : returnedDraft && reading.note === "draft" ? { ...refusal, sentence: translate("composer.protocol.draftIsReturned") } : refusal,
         reply.surface ?? shownSurface,
         offered,
       );
@@ -3338,8 +3347,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 : (e) => {
                     if (e.key !== "Enter") return;
                     const chord = e.metaKey || e.ctrlKey;
-                    // A device with a mouse has Shift for the newline; a phone's keyboard does not.
-                    if (!chord && (!enterSends || e.shiftKey || e.nativeEvent.isComposing)) return;
+                    // Direct messages use Enter on phones too; Shift+Enter keeps a newline.
+                    const directEnter = directMessages && modeFor(input.trim()) === "send";
+                    if (!chord && ((!enterSends && !directEnter) || e.shiftKey || e.nativeEvent.isComposing)) return;
                     e.preventDefault();
                     // A held key repeats: its repeat must not be the second press a destructive line asks for.
                     if (!e.repeat && (chord || hasDraft)) onSendClick();
