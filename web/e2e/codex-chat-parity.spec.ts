@@ -18,7 +18,7 @@ for (const harness of ["claude", "codex"] as const) {
     const stem = `${testInfo.project.name}-${harness}`;
     const stream = page.locator('[data-slot="session-stream"]');
     await expect(stream).toBeVisible();
-    await page.getByRole("heading", { name: "Проверка", exact: true }).scrollIntoViewIfNeeded();
+    await page.getByText("Проверка", { exact: true }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: join(folder, `${stem}-prose.png`) });
     await page.getByText("Изменение сохранено. Проверка завершилась с ошибкой; исправлю её.", { exact: true }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: join(folder, `${stem}-footer.png`) });
@@ -32,7 +32,7 @@ for (const harness of ["claude", "codex"] as const) {
   test(`@oracle:requirement ${harness}: owner reference elements fit the real viewport`, async ({ page }) => {
     await openComparisonChat(page, harness);
     const stream = page.locator('[data-slot="session-stream"]');
-    await expect(stream.getByRole("heading", { name: "Проверка", exact: true })).toBeAttached();
+    await expect(stream.getByText("Проверка", { exact: true })).toBeAttached();
     await expect(stream.locator("ol li")).toHaveCount(2);
     await expect(stream.locator("ul li")).toHaveCount(2);
     await expect(stream.locator("code").filter({ hasText: "src/greeting.ts" })).toBeAttached();

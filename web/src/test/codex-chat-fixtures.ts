@@ -1,10 +1,11 @@
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import type { TranscriptEntry } from "@/lib/types";
 
 // Independently authored wire oracle for rendering. Reader integration is exercised separately by
 // the Bun journal tests and the Playwright materializer. Node must not import the Bun adapters.
-export const CHAT_COMPARISON_IMAGE = `data:image/png;base64,${readFileSync(new URL("../../public/badge-96x96.png", import.meta.url)).toString("base64")}`;
+export const CHAT_COMPARISON_IMAGE = `data:image/png;base64,${readFileSync(join(import.meta.dirname, "..", "..", "public", "badge-96x96.png")).toString("base64")}`;
 export const CHAT_COMPARISON_MARKDOWN = '## Проверка\n\n**Готово.** Файл `src/greeting.ts` обновлён.\n\n1. Прочитан исходный код.\n2. Проверено приветствие.\n\n- Формат сохранён.\n- Изменение можно проверить.\n\n```ts\nexport const greeting = "Hello";\n```';
 export const CHAT_COMPARISON_OUTPUT = Array.from({ length: 80 }, (_, index) => `output line ${String(index + 1).padStart(3, "0")}`).join("\n");
 
