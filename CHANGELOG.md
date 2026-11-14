@@ -35,6 +35,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **The background-agents bar shows above the composer on Claude Code for macOS.** On macOS Claude Code draws the header of its background-agents footer as `⏺ main`, where Linux draws `● main`. Collie knew only the Linux mark, so the collapsed agents bar stayed hidden, and while a turn ran a focused `❯ ⏺ main` panel read as something open at the box and refused a send. Both marks now match, in the footer reader, the agents bar and the Claude profile. Thanks @GGGODLIN (#782).
 
+### Fixed
+
+- **Codex conversations stay readable with a wrapped status line.** Recognise Codex 0.169 screens on the phone, retain both status rows, and keep real dialogs blocking sends.
+
 ## [1.28.3] - 2026-11-13
 
 **Urgent.** Claude Code's Remote Control can make Collie hold messages you send from the phone.

@@ -18,7 +18,8 @@
 // walk reaches, not the thing that decides whether the composer exists.
 
 import { trimTrailingBlank, type StyledLine } from "../../blocks";
-import { readIsUnstyled } from "../../surface/frame";
+import { findInputFrame, readIsUnstyled } from "../../surface/frame";
+import { requireProfile } from "../../surface/profile";
 import {
   isBlank,
   isHintRow,
@@ -41,6 +42,8 @@ export interface ComposerBox {
   /** The status row under it: the last non-blank row of the frame, or the row above 0.157.0's
    *  key-hint row. */
   statusRow: number;
+  /** Last row of a wrapped status line, excluding the footer hints. */
+  statusEndRow?: number;
 }
 
 // A draft wraps onto indented continuation rows between the prompt row and the status row.
@@ -102,7 +105,7 @@ export function locateComposer(lines: StyledLine[]): ComposerBox | null {
   // A read with no styling anywhere (herdr-core): the status and hint rows are read by their text.
   const plain = readIsUnstyled(lines);
   const statusRow = locateStatusRow(texts, clean, plain);
-  if (statusRow < 0) return null;
+  if (statusRow < 0) return wrappedComposer(lines, clean, texts);
 
   for (let i = statusRow - 1; i >= 0 && statusRow - 1 - i <= MAX_DRAFT_ROWS; i--) {
     const t = texts[i]!;
@@ -115,6 +118,28 @@ export function locateComposer(lines: StyledLine[]): ComposerBox | null {
     if (/^\S/.test(t) || isStatusRow(t, clean[i], plain)) return null;
   }
   return null;
+}
+
+/** Codex 0.169 wraps its configurable status line. Use the same bounded frame and named
+ * footer hints as the Surface, so a continuation is neither a draft nor an unknown dialog. */
+function wrappedComposer(lines: StyledLine[], clean: StyledLine[], texts: string[]): ComposerBox | null {
+  const idle = requireProfile("codex").idle;
+  const frame = findInputFrame(clean, idle);
+  if (frame === null) return null;
+  const hints = (idle.volatile.below.hints ?? []).map((pattern) => new RegExp(pattern, "u"));
+  let statusEndRow = frame.bottom;
+  const last = frame.volatile.status?.last ?? frame.bottom;
+  for (let i = frame.bottom + 1; i <= last; i++) {
+    if (isBlank(texts[i]!) || hints.some((hint) => hint.test(texts[i]!))) break;
+    statusEndRow = i;
+  }
+  if (statusEndRow === frame.bottom) return null;
+  return {
+    top: bandTop(lines, texts, frame.interior.prompt),
+    promptRow: frame.interior.prompt,
+    statusRow: frame.bottom,
+    statusEndRow,
+  };
 }
 
 /** The status row: the last non-blank row, or the row straight above it when that last row is the
@@ -158,7 +183,7 @@ export function stripChrome(lines: StyledLine[]): StyledLine[] {
 export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
   const box = locateComposer(lines);
   if (box === null) return [];
-  return [withoutSparkles(lines[box.statusRow]!)];
+  return lines.slice(box.statusRow, (box.statusEndRow ?? box.statusRow) + 1).map(withoutSparkles);
 }
 
 /**
