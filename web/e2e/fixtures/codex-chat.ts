@@ -1,18 +1,18 @@
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import type { Page } from "@playwright/test";
 
-import { parseCodexTranscript } from "../../../bridge/journal/codex";
-import { parseClaudeTranscript } from "../../../bridge/journal/claude";
-import type { AgentView, PaneChatResponse, SnapshotResponse } from "@/lib/types";
+import type { AgentView, PaneChatResponse, SnapshotResponse, TranscriptEntry } from "@/lib/types";
 import { FIXTURE_CHAT_GEN, FIXTURE_SEQ_BASE, fixtureAgents, fixtureSnapshot } from "@/test/handlers";
 import { installApiStub, installPaneWorld, paneCapture, pinLocale } from "./api";
 
 export type ChatHarness = "claude" | "codex";
 
 export function comparisonTranscript(harness: ChatHarness) {
-  const raw = readFileSync(new URL(`../../../bridge/journal/fixtures/codex-chat/${harness}-reference.jsonl`, import.meta.url), "utf8");
-  return harness === "codex" ? parseCodexTranscript(raw) : parseClaudeTranscript(raw);
+  const folder = resolve(process.env.CODEX_CHAT_MATERIALIZED ?? "../../codex-reports/codex-chat/materialized");
+  // SAFETY: this file is produced by our Bun test materializer immediately before the preview starts.
+  return JSON.parse(readFileSync(resolve(folder, `${harness}.json`), "utf8")) as TranscriptEntry[];
 }
 
 export async function openComparisonChat(page: Page, harness: ChatHarness) {

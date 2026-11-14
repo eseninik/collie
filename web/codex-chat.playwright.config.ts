@@ -19,7 +19,7 @@ export default defineConfig({
     { name: "app-desktop", use: { browserName: "chromium", viewport: { width: 1440, height: 1000 } } },
   ],
   webServer: {
-    command: `bunx vite preview --host 127.0.0.1 --port ${PORT} --strictPort`,
+    command: `bun e2e/fixtures/materialize-codex-chat.ts && bunx vite preview --host 127.0.0.1 --port ${PORT} --strictPort`,
     env: { COLLIE_DEV_TARGET: "http://127.0.0.1:9" },
     url: URL,
     reuseExistingServer: false,

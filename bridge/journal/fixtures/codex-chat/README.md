@@ -14,3 +14,7 @@ infer an error from arbitrary output text when no status is present.
 
 The input_image output-list shape was independently observed by the parent in a real Codex 0.169
 session before implementation. The PNG bytes are committed public/badge-96x96.png, not owner data.
+
+`codex-0169-captured.jsonl` is a real low-effort 0.169 capture made for this task in an empty
+throwaway folder. Only the task scratch path was replaced with /repo; image bytes and tool
+content were preserved. Capture provenance is outside the repository under codex-reports/codex-chat.

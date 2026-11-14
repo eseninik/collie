@@ -80,3 +80,45 @@ describe("@oracle:requirement Codex chat uses the data present in the journal", 
     expect(part.result).not.toHaveProperty("isError");
   });
 });
+
+// This fixture was captured with the installed 0.169 CLI at low effort in the task's empty probe
+// folder. The expected visible operations come directly from its tool input and recorded outputs.
+describe("@oracle:requirement real Codex 0.169 Code Mode", () => {
+  const captured = () => parseCodexTranscript(readFileSync(new URL("./fixtures/codex-chat/codex-0169-captured.jsonl", import.meta.url), "utf8")).flatMap((entry) => entry.parts);
+
+  test("@req:CODEX_CHAT_CODEMODE exposes the five statically recorded operations as cards", () => {
+    const calls = captured().filter((part): part is ToolPart => part.kind === "tool");
+    expect(calls).toHaveLength(5);
+    const commands = calls.flatMap((part) => part.call?.kind === "execute" ? [part.call] : []);
+    expect(commands).toHaveLength(3);
+    expect(commands.some((call) => call.command.includes("seq 1 45"))).toBe(true);
+    expect(commands.some((call) => call.command.includes("demo.txt"))).toBe(true);
+    expect(commands.find((call) => call.command === "exit 7")?.exitCode).toBe(7);
+    expect(calls.find((part) => part.call?.kind === "execute" && part.call.command === "exit 7")?.result?.isError).toBe(true);
+    const output = calls.find((part) => part.call?.kind === "execute" && part.call.command.includes("seq 1 45"))?.result?.text;
+    expect(output).toContain("1. Sample output");
+    expect(output).toContain("45. Sample output");
+    expect(output).not.toContain('"chunk_id"');
+    const patch = calls.find((part) => part.call?.kind === "edit")?.call;
+    expect(patch).toMatchObject({ kind: "edit", path: "/repo/demo.txt", added: 1, removed: 1 });
+    if (patch?.kind !== "edit") throw new Error("captured patch did not reach an edit card");
+    expect(patch.diff?.flatMap((hunk) => hunk.lines)).toEqual(["-old", "+new"]);
+    expect(calls.some((part) => part.result?.imageUrl?.startsWith("data:image/png;base64,"))).toBe(true);
+  });
+
+  test.each([
+    ['a quoted mention', 'text("tools.exec_command({cmd: \\"false\\"})");'],
+    ['a commented call', '// text(await tools.exec_command({cmd:"false"}));\ntext("a note");'],
+    ['a dynamic argument', 'const cmd = getCommand(); text(await tools.exec_command({cmd}));'],
+    ['a conditional call', 'if (choose()) text(await tools.exec_command({cmd:"false"}));'],
+  ])("@req:CODEX_CHAT_CODEMODE_UNKNOWN %s never invents a command/result pair", (_label, input) => {
+    const records = [
+      { type: "custom_tool_call", call_id: "unknown_exec", name: "exec", input },
+      { type: "custom_tool_call_output", call_id: "unknown_exec", output: [{ type: "input_text", text: '{"exit_code":7,"output":"recorded text"}' }] },
+    ].map((payload) => JSON.stringify({ timestamp: "2026-11-14T10:03:00.000Z", type: "response_item", payload }));
+    const parsed = parseCodexTranscript(records.join("\n")).flatMap((entry) => entry.parts);
+    expect(parsed.filter((part) => part.kind === "tool" && part.call?.kind === "execute")).toEqual([]);
+    // The honest fallback stays readable. An unrecognised shape must not disappear.
+    expect(parsed.some((part) => part.kind === "tool")).toBe(true);
+  });
+});
