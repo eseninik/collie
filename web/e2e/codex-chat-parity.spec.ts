@@ -46,7 +46,8 @@ for (const harness of ["claude", "codex"] as const) {
     await expect(stream.locator("ol li")).toHaveCount(2);
     await expect(stream.locator("ul li")).toHaveCount(2);
     await expect(stream.locator("code").filter({ hasText: "src/greeting.ts" })).toBeAttached();
-    await expect(stream.getByText("You", { exact: true })).toBeAttached();
+    // The visible reference caption contains You and its time together, without a separate label node.
+    await expect(stream.getByText(/^You\s*\d{1,2}:\d{2}/)).toBeVisible();
     await expect(page.getByText("Still working…", { exact: true })).toBeVisible();
     await expect(page.getByRole("textbox")).toBeInViewport();
     await expect(page.locator('[data-slot="model-tag"]')).toContainText("medium");
