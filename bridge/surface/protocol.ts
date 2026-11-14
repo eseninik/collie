@@ -5393,7 +5393,11 @@ export class SendProtocol {
       if (belowMovedAlone(earlier, snap)) state.belowMoved = true;
       earlier = snap;
       if (boxOnly) {
-        const verdict = typedBoxVerdict(s0, snap, prefix, lines, collapse, state.whole);
+        const read = typedBoxVerdict(s0, snap, prefix, lines, collapse, state.whole);
+        // Owner 2026-11-14: on Codex a typed message always goes out. Codex 0.169 draws a long text in
+        // its box unlike the typed lines, so the compare reads `mismatch` and the text stayed as a draft.
+        // The frame, the dialog and the other-screen checks still stand.
+        const verdict = read === "mismatch" && state.match?.profile.id === "codex" ? "pass" : read;
         if (verdict === "other_screen") {
           // Not the conversation's box: it does not come back by itself, and Enter there starts a new session.
           why = "changed";
