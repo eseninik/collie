@@ -3,7 +3,14 @@
 // one receipt, a closed list of outcomes. The box is proven by what typing does, not by what it looks
 // like, and the submit key leaves only through the key gate.
 //
-// Steps, each bounded as (max reads, max ms):
+// Direct phone messages on the owner's selected profiles (profiles/direct-send.ts) use one fresh
+// S0 read and the existing Replace clear, without Collie's hold queue or send probes. Only an
+// unstyled placeholder needs the existing draft proof, so clearing never acts on a suggestion. S1 submits through
+// compare/redraw differences, but a modal, another screen or no input box still stops the send.
+// Commands, explicit steers and other callers keep the protocol below. A direct Codex send whose
+// submit was swallowed gets one retry on a fresh safe box read, never a retry loop.
+//
+// Steps for the guarded path, each bounded as (max reads, max ms):
 //   accept  write `<stateDir>/sends/<id>.json` before any key; the same id returns the same receipt
 //   S0      (2, 1200) a fresh read after the request arrived, stable across two mux calls; the
 //           Surface must be free, or unknown(no-match) with the hash of the rows the person saw
@@ -142,7 +149,7 @@
 // Discard). With no length known the request is refused `draft_present` before any key, so a clear
 // never stops half way through a person's draft (omp gang, 2026-10-25).
 //
-// A draft read is a reading until a probe proves it (2026-10-25): a pane can keep a stale image of an
+// Outside the direct path, a draft read needs a probe (2026-10-25): a pane can keep a stale image of an
 // earlier, taller layout at its foot (a resize that never reached a background pane), whose editor row
 // shows a draft while the live editor, drawn higher up, is empty. So no request acts on an idle box's
 // draft before a probe: a send or command it would refuse `draft_present`, an Add to it, a Replace, a
@@ -247,6 +254,7 @@ import { isImagePath, isUploadImagePath, pastePieces } from "../../web/src/lib/u
 import { enterTypesText, pointsAt, staleListUnder } from "../../web/src/lib/surface/command-list.ts";
 import type { PopupRead } from "../../web/src/lib/surface/popup.ts";
 import { commandListAnyText, commandListAt, isRunningRow, noticeOver, ownCommandList, popupAt, readCues, readCuesFor, runningSign, withoutCommandList, withoutPopup, withoutPromptEchoes, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
+import { directSend, retrySubmitProfile } from "../../web/src/lib/surface/profiles/direct-send.ts";
 import { loadProfiles } from "../../web/src/lib/surface/profile.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { findInputFrame, readIsUnstyled, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
@@ -3014,8 +3022,10 @@ export class SendProtocol {
       const stored = accepted.record.receipt;
       if (stored !== undefined) {
         // A command's draft refusal offers no Add on a replay either: the same rule, read from the same request.
-        const command = stored.reason === "draft_present" && draftCommand(request, await this.deps.profile(target.harness, target.paneId));
-        const replay: SendAnswer = { receipt: stored, offers: offersFor(stored.outcome, stored.reason, stored.profileId !== null, command), replayed: true };
+        const match = await this.deps.profile(target.harness, target.paneId);
+        const command = stored.reason === "draft_present" && draftCommand(request, match);
+        const offers = directSend(match, request) && stored.cap === undefined ? [] : offersFor(stored.outcome, stored.reason, stored.profileId !== null, command);
+        const replay: SendAnswer = { receipt: stored, offers, replayed: true };
         // A send a crash cut short: read the pane now and report it beside the stored receipt.
         if (stored.outcome !== "unknown" || stored.reason !== "crash") return replay;
         return withLook(replay, await this.lookAfterCrash(request, accepted.record, target));
@@ -3045,7 +3055,7 @@ export class SendProtocol {
     // which wait for that turn to end anyway.
     const joins = holds !== undefined && JOINS.has(request.mode) && waiting.length > 0 && !draftOnly && request.when !== "steer";
     const match = joins ? ((await this.deps.profile(target.harness, target.paneId)) ?? (await this.heldPlainProfile(request, waiting, target.paneId, generation))) : null;
-    if (match !== null && !(request.mode === "command" && runsInTurnEntry(request.text, match) !== null)) {
+    if (match !== null && !directSend(match, request) && !(request.mode === "command" && runsInTurnEntry(request.text, match) !== null)) {
       const state = this.bareState(request, accepted.record, target, match);
       const refusal = textRefusal(request, match);
       if (refusal !== null) return this.settle(state, refusal);
@@ -3109,7 +3119,7 @@ export class SendProtocol {
    * a reserved lead is a command here too.
    */
   private holdsEnd(state: RunState, end: Ended): boolean {
-    if (this.deps.holds === undefined || end.outcome !== "refused") return false;
+    if (directSend(state.match, state.request) || this.deps.holds === undefined || end.outcome !== "refused") return false;
     // A steer is never held (M69): it is for the turn that runs now, and a later turn is the wrong one.
     if (state.request.when === "steer") return false;
     const clean = cleanProbe(state, end);
@@ -3979,7 +3989,10 @@ export class SendProtocol {
     }
     this.count(state, receipt, end.extra.surface);
     const framed = end.extra.framed ?? (state.marks.s0?.frame ?? null) !== null;
-    return answerWith({ receipt, offers: end.extra.offers ?? offersOf(outcome, receipt.reason, framed, end.extra.surface) }, end.extra);
+    // A direct send never asks a client to submit text after a hard stop. In particular,
+    // a legacy Submit on another screen could start a session instead of sending a reply.
+    const offers = directSend(state.match, state.request) && end.extra.cap === undefined ? ["keys"] as const : end.extra.offers ?? offersOf(outcome, receipt.reason, framed, end.extra.surface);
+    return answerWith({ receipt, offers: outcome === "sent" || outcome === "effective" ? [] : offers }, end.extra);
   }
 
   /** The counters key of a request: harness, binary version, profile id and status, `-` where there is none. */
@@ -4051,6 +4064,9 @@ export class SendProtocol {
   private async steps(state: RunState): Promise<void> {
     const { request, match } = state;
     const profile = match?.profile ?? null;
+    const direct = directSend(match, request);
+    // Direct sends use the existing Replace branch, including its bounded safe clear.
+    const mode = direct ? "replace" : request.mode;
     const lines = sendLines(request.text);
     const leads = profile?.reservedLeads ?? GENERIC_LEADS;
     const writes = request.mode === "send" || request.mode === "command" || request.mode === "append" || request.mode === "replace";
@@ -4104,7 +4120,7 @@ export class SendProtocol {
     // At most one of Collie's probe characters unaccounted for per pane (2026-10-26): while one an
     // earlier send typed into a starting box has not shown, a request that would type into the box
     // types no probe of its own. Once it shows, the residue rule below takes it out first.
-    if (writes && this.pendingOf(state) > 0 && this.residueOf(state, s0) === 0) {
+    if (!direct && writes && this.pendingOf(state) > 0 && this.residueOf(state, s0) === 0) {
       if (state.released === true) state.startWait = true;
       throw new Ended("refused", "probe_failed", { surface: s0.surface, framed: s0.frame !== null, detail: pendingDetail(match, probeCharOf(match)) });
     }
@@ -4113,7 +4129,7 @@ export class SendProtocol {
     const residue = this.residueOf(state, s0) > 0;
     // A draft read is a reading until a probe proves it (the header, 2026-10-25). A stale frame gets one
     // more S0 read, and the run goes on from it or ends refused.
-    if (residue || this.draftToProve(state, s0, holds)) {
+    if ((!direct || mayHoldPlaceholder(match, s0)) && (residue || this.draftToProve(state, s0, holds))) {
       const started = this.now();
       const probeWrites = state.probeWriteMs;
       if (!residue && state.request.draftHolds === true && s0.frame !== null) state.placeholderProbe = boxText(s0.frame);
@@ -4143,7 +4159,7 @@ export class SendProtocol {
       }
     }
     const markers = this.residueOf(state, s0);
-    if (markers > 0) {
+    if (!direct && markers > 0) {
       s0 = await this.removeResidue(state, markers);
       state.marks.s0 = s0;
       this.atS0(state, s0);
@@ -4151,7 +4167,7 @@ export class SendProtocol {
       if (request.mode === "discard") return;
     }
 
-    switch (request.mode) {
+    switch (mode) {
       case "submit": {
         // A returned card's Send goes only on an idle turn: a busy one means the text may be on its way.
         if (request.returnedCard === true && s0.surface.turn !== "idle") throw new Ended("refused", "not_free", { surface: s0.surface, detail: RETURNED_BUSY });
@@ -4214,7 +4230,7 @@ export class SendProtocol {
       case "prepare":
         return;
     }
-    if (request.mode !== "replace") this.lap(state, "s0");
+    if (mode !== "replace") this.lap(state, "s0");
 
     const prefix = request.mode === "append" && s0.frame !== null ? boxText(s0.frame) : "";
     const text = lines.join("");
@@ -4222,7 +4238,7 @@ export class SendProtocol {
     // send into a running turn (a send, Add to it, Replace): a dialog can open at any moment of a turn.
     // A notice's digit is never probed: S0 proved the box empty, and no key but the digit may reach a box under the notice.
     state.probed =
-      !state.noticeKey &&
+      !direct && !state.noticeKey &&
       // After a second S0 read of a stale box the box is proven by the probe again, whatever the profile says.
       // So is a box of a harness that is starting: it may be drawn and still read no keys.
       (state.reread ||
@@ -4367,7 +4383,7 @@ export class SendProtocol {
     if (s0.frame?.newlineSubmits === true && sendLines(state.request.text).length > 1) {
       throw new Ended("refused", "multiline", { surface: s0.surface, detail: NEWLINE_SUBMITS });
     }
-    state.manual = takesManualSend(s0.surface);
+    state.manual = !directSend(state.match, state.request) && takesManualSend(s0.surface);
     if (state.manual) this.gateSteeringTurn(state, s0);
     this.checkGeneration(state, "refused");
   }
@@ -4393,7 +4409,8 @@ export class SendProtocol {
     // except where the draft may be the placeholder (M78 spec 06): one probe decides, and the hold queue
     // asks for it only once the box text held still between two polls (tickHolds).
     if (state.request.draftHolds === true && !mayShowPlaceholder) return false;
-    if (surface.turn !== "idle" || surface.modal !== "none" || surface.composer !== "draft" || boxText(frame).length === 0) return false;
+    const directPlaceholder = directSend(state.match, state.request) && mayShowPlaceholder;
+    if ((!directPlaceholder && surface.turn !== "idle") || surface.modal !== "none" || surface.composer !== "draft" || boxText(frame).length === 0) return false;
     switch (state.request.mode) {
       case "send":
       case "command":
@@ -4717,7 +4734,9 @@ export class SendProtocol {
    */
   private draftFrame(state: RunState, s0: Snap): Frame {
     const { surface, frame } = s0;
-    if (frame === null || surface.turn === "unknown" || surface.modal !== "none" || (surface.composer !== "draft" && surface.composer !== "empty")) {
+    const direct = directSend(state.match, state.request);
+    if (direct && s0.otherScreen !== null) throw new Ended("refused", "not_free", { surface, detail: otherScreenDetail(s0.otherScreen) });
+    if (frame === null || (!direct && surface.turn === "unknown") || surface.modal !== "none" || (surface.composer !== "draft" && surface.composer !== "empty")) {
       throw new Ended("refused", "not_free", { surface, detail: "The input box is not free." });
     }
     if (surface.turn === "running") this.gateTurn(state, s0, frame);
@@ -4746,6 +4765,10 @@ export class SendProtocol {
    * dialog). A send S0 already put on the queued path met the rule there and skips this.
    */
   private turnAtS1(state: RunState, s0: Snap, s1: Snap): void {
+    if (directSend(state.match, state.request)) {
+      if (s1.surface.turn === "running") state.queued = true;
+      return;
+    }
     if (state.queued) return;
     // The box as S0 read it: what goes out is the text plus what the box held then (Add to it).
     const frame = s1.surface.turn === "running" && s1.frame !== null ? s0.frame : null;
@@ -4769,7 +4792,7 @@ export class SendProtocol {
 
   /** Anything that goes into a turn S0 read as running (a send, Add to it, Replace, Submit, Discard) meets {@link turnRefusal}, then is queued. */
   private gateTurn(state: RunState, s0: Snap, frame: Frame): void {
-    const refusal = turnRefusal(state, s0, frame);
+    const refusal = directSend(state.match, state.request) ? null : turnRefusal(state, s0, frame);
     if (refusal !== null) throw refusal;
     state.queued = true;
   }
@@ -5064,7 +5087,7 @@ export class SendProtocol {
   }
 
   /**
-   * S0 with one more read when the screen's geometry is in flux (2026-10-26, omp gang three 02-desync):
+   * Direct sends read once. Other sends retry S0 once when the geometry is in flux (2026-10-26):
    * the two reads differ in grid size (a resize landed between them), or the read is torn (cut inside the
    * box). Such a read is a frame on its way, not a box that is not free, so it is no reason yet to hold
    * the send or refuse it `not_free`. After {@link SETTLE_MS} S0 reads again, once, and that read is
@@ -5072,6 +5095,12 @@ export class SendProtocol {
    * `gapsMs.settle`, so `s0` stays the time of the reads that were judged.
    */
   private async settledS0(state: RunState): Promise<Snap> {
+    // A direct send needs a fresh box, not two stable polls of a running agent's redraw.
+    if (directSend(state.match, state.request)) {
+      const snap = await this.read(state, "s0", Math.min(this.now() + BOUNDS.s0.ms, state.deadline));
+      if (snap === null) throw this.noRead(state);
+      return snap;
+    }
     try {
       const s0 = await this.stableRead(state, "s0");
       if (s0.surface.reason !== "torn" || state.keys.length > 0) return s0;
@@ -5391,16 +5420,18 @@ export class SendProtocol {
     // A message into a framed box on a harness that takes one in a turn: only the box and what is under
     // it decide (2026-10-17 decision). Where Enter would steer or interrupt a turn and no queue key
     // exists, rows above that moved may be a turn Collie did not see, so the full compare stays.
-    const boxOnly = s0.frame !== null && !command && !manual && queuesInTurn(state.match);
+    const direct = directSend(state.match, state.request);
+    const boxOnly = s0.frame !== null && !command && !manual && (direct || queuesInTurn(state.match));
     const judge = (snap: Snap): Verdict => {
       if (belowMovedAlone(earlier, snap)) state.belowMoved = true;
       earlier = snap;
       if (boxOnly) {
         const read = typedBoxVerdict(s0, snap, prefix, lines, collapse, state.whole);
-        // Owner 2026-11-14: on Codex a typed message always goes out. Codex 0.169 draws a long text in
-        // its box unlike the typed lines, so the compare reads `mismatch` and the text stayed as a draft.
-        // The frame, the dialog and the other-screen checks still stand.
-        const verdict = read === "mismatch" && state.match?.profile.id === "codex" ? "pass" : read;
+        // A person's direct message submits through redraw and compare differences. A modal,
+        // another screen or a missing box still stops it. Keep Codex's existing mismatch fix for
+        // other callers too.
+        const safeDirect = direct && snap.frame !== null && read !== "modal_cue" && read !== "other_screen";
+        const verdict = safeDirect || (read === "mismatch" && retrySubmitProfile(state.match?.profile.id)) ? "pass" : read;
         if (verdict === "other_screen") {
           // Not the conversation's box: it does not come back by itself, and Enter there starts a new session.
           why = "changed";
@@ -5603,6 +5634,7 @@ export class SendProtocol {
    * `command` also passes when the box went away or no longer holds the text: a command may open its
    * own screen (a picker, a panel) in the box's place. So does a send into a box that answers the
    * agent's question (`idle.frame.answers`) once two reads in a row show no box: it closes on its answer.
+   * A direct send on a retry-submit profile gets one more key only while its safe box holds the text.
    */
   private async awaitSent(state: RunState, s0: Snap, landing: Landing | null, lines: readonly string[]): Promise<void> {
     const { command, manual } = state;
@@ -5653,6 +5685,18 @@ export class SendProtocol {
       return manual && emptyBoxBack(s0.plain, snap.plain, landing, lines.join("")) ? "pass" : "wait";
     };
     let result = await this.poll(state, "s2", BOUNDS.s2, test);
+    const last = result.snap;
+    const retry = directSend(state.match, state.request) && retrySubmitProfile(state.match?.profile.id);
+    if (retry && result.verdict !== "pass" && last !== null && last.frame !== null &&
+        !modalAtBox(last) && !framedCueGrew(state.marks.s1 ?? s0, last) && last.otherScreen === null &&
+        wsFree(sentText).length > 0 && wsFree(boxText(last.frame)) === wsFree(sentText) &&
+        !witnessed && (queued || !runningSign(last.rows, last.frame, state.match?.profile.idle.runningRows))) {
+      // Codex 0.169 may swallow the first Tab. The text is still in the same safe box, and
+      // no new turn started. Refresh the gate revision and press the same submit key once.
+      this.stretch(state, BOUNDS.s2.ms);
+      await this.commit(state, last);
+      result = await this.poll(state, "s2", BOUNDS.s2, test);
+    }
     // A command's own screen (a picker, a panel) may be slow to draw: a machine under load took more
     // than S2's whole bound to open one, and the box stood unchanged until it did. That screen is the
     // evidence, so a command that found nothing gets one more S2 bound with the same test (still cut
