@@ -1,9 +1,10 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { expect, test } from "@playwright/test";
 
 import { openComparisonChat } from "./fixtures/codex-chat";
+import { captureChatStyles } from "./fixtures/codex-chat-measure";
 
 // Oracle: task 4 and both owner screenshots, 2026-11-14. The helper reads committed journal
 // fixtures through the real public parsers. These are layout/phone-image checks, not pixel baselines.
@@ -22,11 +23,20 @@ for (const harness of ["claude", "codex"] as const) {
     await page.screenshot({ path: join(folder, `${stem}-prose.png`) });
     await page.getByText("Изменение сохранено. Проверка завершилась с ошибкой; исправлю её.", { exact: true }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: join(folder, `${stem}-footer.png`) });
-    const group = stream.getByRole("button", { expanded: false }).filter({ hasText: /steps|tools|Thinking/i }).first();
-    if (await group.count()) {
+    const group = stream.getByRole("button", { expanded: false }).filter({ hasText: /\bcommands?\b|\bedits?\b|steps|tools|Thinking/i }).first();
+    const toolGroupOpened = await group.count() > 0;
+    if (toolGroupOpened) {
       await group.click();
       await page.screenshot({ path: join(folder, `${stem}-work.png`) });
     }
+    const measurement = await captureChatStyles(page);
+    await writeFile(join(folder, `${stem}-styles.json`), JSON.stringify({
+      harness,
+      project: testInfo.project.name,
+      phase: process.env.CODEX_CHAT_CAPTURE_PHASE ?? "unspecified",
+      toolGroupOpened,
+      ...measurement,
+    }, null, 2));
   });
 
   test(`@oracle:requirement ${harness}: owner reference elements fit the real viewport`, async ({ page }) => {
@@ -50,7 +60,8 @@ for (const harness of ["claude", "codex"] as const) {
   test(`@oracle:requirement ${harness}: journal image opens full screen and closes`, async ({ page }, testInfo) => {
     await openComparisonChat(page, harness);
     const stream = page.locator('[data-slot="session-stream"]');
-    const inline = stream.locator('img[src^="data:image/png;base64,"]').first();
+    // Select the tool-result image by its public caption, not the earlier pasted user image.
+    const inline = stream.getByRole("img", { name: "Tool output", exact: true }).first();
     await expect(inline).toBeAttached();
     await inline.scrollIntoViewIfNeeded();
     await expect(inline).toBeVisible();
