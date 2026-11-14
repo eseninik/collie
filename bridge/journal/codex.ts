@@ -1,5 +1,9 @@
 // Codex's journal adapter.
 //
+// Codex 0.169 was measured again on 2026-11-14 (fixtures/codex-chat). Its image blocks,
+// process envelopes, patch inputs and straight-line Code Mode batches feed the shared Claude cards.
+// Format-specific decoding lives in codex-tools.ts and codex-code-mode.ts; neither executes input.
+//
 // SHAPE OF THE SOURCE (verified against on-disk rollouts from codex 0.32.0 AND 0.145.0, 2026-07-29 —
 // the path layout and the row envelope are identical across that span; 0.145 adds `world_state` and
 // `turn_context` row types, and a `developer` message role, all of which this parser ignores):
@@ -45,6 +49,7 @@ import {
   parseWith,
   createUnknownCounter,
   type KnownTypes,
+  type UnknownCounter,
   NO_CHANGE,
   noQueue,
   noteBlockTypes,
@@ -68,8 +73,9 @@ import {
   rootList,
   statFile,
 } from "./files.ts";
-import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, oneLine, stripAnsi, summarizeToolInput } from "./text.ts";
-import { classifyToolCall, type ToolCall } from "./tool-call.ts";
+import { clamp, MAX_TEXT_CHARS, oneLine, stripAnsi, summarizeToolInput } from "./text.ts";
+import { codexCalls, codexImages, codexJson, codexOutput, codexResult, type CodexToolPart } from "./codex-tools.ts";
+import { codexCodeModeParts } from "./codex-code-mode.ts";
 import type {
   AgentSessionRef,
   JournalAdapter,
@@ -120,7 +126,7 @@ export function codexCursor(line: string, seen: Map<string, number>): string {
 }
 
 /** Flatten a Codex content list (`input_text` / `output_text` / `text` blocks) into plain text. */
-function blockText(content: JsonValue | undefined): string {
+function blockText(content: JsonValue | undefined, separator = "\n"): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content
@@ -130,7 +136,7 @@ function blockText(content: JsonValue | undefined): string {
         : "",
     )
     .filter(Boolean)
-    .join("\n");
+    .join(separator);
 }
 
 /**
@@ -139,18 +145,7 @@ function blockText(content: JsonValue | undefined): string {
  * output isn't JSON should still show its output rather than nothing.
  */
 export function codexToolOutput(raw: JsonValue | undefined): string {
-  if (typeof raw !== "string") return "";
-  try {
-    // SAFETY: `JSON.parse` output IS a JsonValue by construction; this names it so the `output`
-    // read below stays a checked property access rather than a second assertion.
-    const parsed = JSON.parse(raw) as JsonValue;
-    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) && typeof parsed.output === "string") {
-      return parsed.output;
-    }
-  } catch {
-    // not JSON — the raw string IS the output
-  }
-  return raw;
+  return codexOutput(raw).body;
 }
 
 /** `arguments` arrives as a JSON string, not an object — parse before summarising. */
@@ -201,108 +196,10 @@ function codexCustomInput(raw: JsonValue | undefined): JsonValue | undefined {
   return { script: raw };
 }
 
-/**
- * Codex's own preamble on an `exec` result, and the trailer under it.
- *
- * Both are codex literals, read off 52 `custom_tool_call_output` rows here, and they are matched
- * rather than assumed: a version that stops writing them leaves the text whole instead of losing a
- * line of it. `Script running with cell ID <n>` is the same header for a call still going.
- *
- * The trailer is the exit code, in the two dialects seen (`exit_code=0` and a bare `1`). It is read
- * ONLY as the third or later block under a matched preamble, because in a two-block output the
- * second block is the output itself — `echo 42` would otherwise report exit 42 and show nothing.
- */
-/** What an `exec` result row says: the output, and the exit code codex buried in a block of its own. */
-interface ExecOutput {
-  readonly body: string;
-  readonly exitCode?: number;
-}
-
-const EXEC_PREAMBLE = /^Script (?:completed|running[^\n]*)\nWall time [^\n]*\nOutput:\n?$/;
-const EXEC_TRAILER = /^(?:exit_code=)?(\d{1,3})$/;
-
-/**
- * Split a `custom_tool_call_output.output` into the output and the exit code codex buried in it.
- *
- * THE SHAPE IS TWO SHAPES, which is the part a naive read of the `function_call_output` path gets
- * wrong. Counted here: `output` is a LIST of `input_text` blocks 32 times and a bare STRING 20 times
- * (`aborted by user after 8.5s` among them, which {@link REFUSED} then marks as a refusal). The list
- * runs preamble, output, and sometimes the code:
- *
- *   [ "Script completed\nWall time 0.1 seconds\nOutput:\n", "line 1\nline 2\n", "exit_code=0" ]
- *
- * The preamble is dropped when anything follows it, because three lines of "Wall time" ahead of every
- * exec result is three lines of a phone screen (DESIGN.md §2). It is KEPT when nothing follows, since
- * "this script is still running" is then the only thing the row says.
- */
-function codexExecOutput(raw: JsonValue | undefined): ExecOutput {
-  if (!Array.isArray(raw)) return { body: blockText(raw) };
-  const texts = raw.map((b) => blockText([b]));
-  if (texts.length < 2 || !EXEC_PREAMBLE.test(texts[0] ?? "")) return { body: blockText(raw) };
-  const trailer = texts.length >= 3 ? EXEC_TRAILER.exec(texts.at(-1) ?? "") : null;
-  const body = texts.slice(1, trailer === null ? undefined : -1).filter(Boolean).join("\n");
-  if (body.trim() === "" && trailer === null) return { body: blockText(raw) };
-  return trailer === null ? { body } : { body, exitCode: Number(trailer[1]) };
-}
-
-/** A `tool` part's answered output — {@link clamp}'s pair, plus the flags the output earns. */
-type ToolResult = NonNullable<Extract<TranscriptPart, { kind: "tool" }>["result"]>;
-
-/**
- * An output that is a REFUSAL, not a failure.
- *
- * These are Codex's own literals (read off the 0.156.1 binary, and `aborted by user after …` seen
- * in real rollouts): `exec command rejected by user`, `patch rejected by user`, `aborted by user
- * after <n>s`, and `…; rejected by user approval settings`, where the no came from the rule the
- * operator set rather than from a tap. All four say somebody said no; none of them says a command
- * failed. A sandbox block (`sandbox denied exec error, exit code: 2`, also in real rollouts) is
- * deliberately NOT here: nothing was asked and nobody refused — the command ran and was stopped,
- * which is an ordinary error.
- */
-const REFUSED = /rejected by user|aborted by user/i;
-
-/**
- * Enrich a classified call from its `function_call_output` row, which is where Codex records what
- * the call actually DID rather than what it was asked to do.
- *
- * WHAT THE ROLLOUT ACTUALLY HOLDS, counted over the 296 `function_call_output` rows on this machine
- * (codex 0.32.0 through 0.156.1): `output` is a JSON string wrapping
- * `{"output":"…","metadata":{"exit_code":0,"duration_seconds":0.0}}` for a `shell` call (153 rows),
- * and a bare non-JSON string for everything else (131 rows) — an error message, `Plan updated`, an
- * approval refusal. `metadata` never carried a key beyond those two, so `exit_code` is the one
- * structured fact on this row and the only one folded in.
- *
- * NOT FILLED, on purpose. There is no diff to read: Codex applies a patch by running `apply_patch`
- * through the shell, so an edit's `added`/`removed` stay 0 and `diff` stays absent, because the
- * rollout records the patch nowhere. And code mode's `exec_command` writes its own `exit_code`
- * inside a list of `input_text` blocks instead of in `output` (1 row); `codexToolOutput` does not
- * read that shape either, so neither does this — a guess there would be a second grammar for one
- * row.
- */
-function enrichCall(call: ToolCall, raw: JsonValue | undefined): void {
-  if (call.kind !== "execute") return;
-  // A `custom_tool_call_output` writes the code as a block of its own instead of in `metadata`, so the
-  // list shape is enriched from {@link codexExecOutput}'s reading rather than from a second grammar.
-  if (Array.isArray(raw)) {
-    const code = codexExecOutput(raw).exitCode;
-    if (code !== undefined) call.exitCode = code;
-    return;
-  }
-  if (typeof raw !== "string") return;
-  let parsed: JsonValue;
-  try {
-    // SAFETY: `JSON.parse` output IS a JsonValue by construction — naming it keeps the reads below
-    // checked property accesses.
-    parsed = JSON.parse(raw) as JsonValue;
-  } catch {
-    return; // a bare string output — it carries no metadata, so it carries no exit code
-  }
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return;
-  const metadata = parsed.metadata;
-  if (metadata === null || metadata === undefined || typeof metadata !== "object" || Array.isArray(metadata)) return;
-  const code = metadata.exit_code;
-  // Assigned, never set to `undefined`: a key holding `undefined` survives a deep compare.
-  if (typeof code === "number" && Number.isFinite(code)) call.exitCode = code;
+/** A pending call retains its emitted entry so a recorded Code Mode batch fills its cards in place. */
+interface PendingCodexTool extends PendingTool {
+  entry: TranscriptEntry;
+  script?: string;
 }
 
 /**
@@ -312,9 +209,6 @@ function enrichCall(call: ToolCall, raw: JsonValue | undefined): void {
 function isInjectedContext(text: string): boolean {
   return text.trimStart().startsWith("<environment_context>");
 }
-
-/** A rollout line, once JSON.parse has admitted it is an object at all. */
-type CodexRow = JsonObject;
 
 /**
  * Parse a Codex rollout log into oldest-first turns. PURE — no fs, no clock.
@@ -365,181 +259,140 @@ const CODEX_KNOWN: KnownTypes = {
     "function_call_output",
     "custom_tool_call",
     "custom_tool_call_output",
+    // 0.169 records tool definitions here, not a conversation turn.
+    "additional_tools",
   ],
   roles: ["user", "assistant", "developer"],
-  parts: ["input_text", "output_text", "text", "summary_text"],
+  parts: ["input_text", "output_text", "text", "summary_text", "input_image"],
 };
 
-/**
- * The same reading, one row at a time (see `reduce.ts`).
- *
- * The loop this replaces was already a reducer wearing a `for`: both maps below were carried across
- * rows, and a `function_call_output` MUTATED a part inside a turn the loop had already pushed. So the
- * state a reducer needs is the state the loop always kept, and the only genuinely new thing here is
- * that the mutation gets REPORTED — under a tail that turn is on somebody's screen.
- *
- * Every row-level `continue` of that loop is a `return` here, and there is no other kind: Codex
- * flattens a row's content in {@link blockText} and in one inline `.map`, so the body never held an
- * inner loop to `continue` over.
- */
-export function createCodexReducer(): RowReducer {
-  // Row hash → how many times it has been seen, which is what gives two byte-identical rows distinct
-  // cursors (see codexCursor). DELIBERATELY UNBOUNDED, unlike `pendingTools` below: evicting an entry
-  // would make a later identical row reuse an earlier row's uuid, and a cursor pointing at the wrong
-  // turn is worse than the memory. Its size is bounded by the window a reader feeds the reducer, not
-  // by the length of the session.
-  const seen = new Map<string, number>();
-  // call_id → the part awaiting its output and the turn it went out in, so a `function_call_output`
-  // lands on its own call and can name where that call is drawn.
-  const pendingTools = new Map<string, PendingTool>();
-  // What this reducer met and had no branch for, asked for once per session by the canary.
-  const unknown = createUnknownCounter(CODEX_KNOWN);
+interface CodexState {
+  // Content-derived occurrence counters must live for the whole parsed window (codexCursor).
+  seen: Map<string, number>;
+  // This map is bounded by rememberPending, just like the other journal adapters.
+  pendingTools: Map<string, PendingCodexTool>;
+  unknown: UnknownCounter;
+}
+interface CodexItem {
+  payload: JsonObject;
+  uuid: string;
+  ts: string;
+}
 
-  // A nested `function` rather than a method on the returned object: the body below is the old loop
-  // body at the indentation it always had, so this refactor is readable as the move it is.
-  function push(line: string): Reduction {
-    const entries: TranscriptEntry[] = [];
-    const changed = new Set<string>();
-    if (line.trim() === "") return NO_CHANGE;
-    let parsed: JsonValue;
-    try {
-      // SAFETY: `JSON.parse` output IS a JsonValue by construction — naming it keeps every field
-      // read below a checked property access.
-      parsed = JSON.parse(line) as JsonValue;
-    } catch {
-      return NO_CHANGE;
-    }
-    // A line that parses to a scalar (or a bare `null`, which used to reach `.type` and THROW) has
-    // no row shape — skip it exactly as an unparseable line is skipped.
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return NO_CHANGE;
-    const row: CodexRow = parsed;
-    // At the READ, not in the branch that declined (`reduce.ts` § `createUnknownCounter`).
-    unknown.row(row.type);
-    // The double-booking guard: everything the UI stream carries is already in `response_item`.
-    if (row.type !== "response_item") return NO_CHANGE;
-    const payload = row.payload;
-    if (payload === null || payload === undefined || typeof payload !== "object" || Array.isArray(payload)) return NO_CHANGE;
-    const p: JsonObject = payload;
-    // The second level of "what is this row": four branches below read it, and a fifth kind of item
-    // is what this call catches. `summary` is reasoning's own block list, `content` is a message's.
-    unknown.row(p.type);
-    noteBlockTypes(unknown, p.content);
-    noteBlockTypes(unknown, p.summary);
-    const ts = typeof row.timestamp === "string" ? row.timestamp : "";
-    const uuid = codexCursor(line, seen);
+/** Admission and unknown-type accounting happen once, including for rows that emit no entry. */
+function readCodexItem(state: CodexState, line: string): CodexItem | null {
+  const row = asRecord(codexJson(line));
+  if (row === null) return null;
+  state.unknown.row(row.type);
+  // The UI event stream duplicates these records, so it is deliberately not parsed as speech.
+  if (row.type !== "response_item") return null;
+  const payload = asRecord(row.payload);
+  if (payload === null) return null;
+  state.unknown.row(payload.type);
+  noteBlockTypes(state.unknown, payload.content);
+  noteBlockTypes(state.unknown, payload.summary);
+  noteBlockTypes(state.unknown, payload.output);
+  return { payload, uuid: codexCursor(line, state.seen), ts: typeof row.timestamp === "string" ? row.timestamp : "" };
+}
 
-    if (p.type === "message") {
-      // Roles are matched EXPLICITLY, never "assistant or else user". Codex 0.145 writes `developer`
-      // rows carrying the injected system prompts (permissions, multi-agent instructions) — three of
-      // them before the first real turn — and treating an unknown role as speech would render those
-      // as things the operator said. Anything that isn't user or assistant is plumbing: drop it.
-      unknown.role(p.role);
-      if (p.role !== "user" && p.role !== "assistant") return NO_CHANGE;
-      const role = p.role;
-      const body = stripAnsi(blockText(p.content));
-      if (body.trim() === "") return NO_CHANGE;
-      if (role === "user" && isInjectedContext(body)) return NO_CHANGE;
-      entries.push({ uuid, ts, role, parts: [{ kind: "text", ...clamp(body, MAX_TEXT_CHARS) }] });
-      return reduction(entries, changed);
-    }
+function codexMessageParts(content: JsonValue | undefined, body: string): TranscriptPart[] {
+  const parts: TranscriptPart[] = [];
+  if (body.trim() !== "") parts.push({ kind: "text", ...clamp(body, MAX_TEXT_CHARS) });
+  parts.push(...codexImages(content));
+  return parts;
+}
 
-    if (p.type === "reasoning") {
-      // Unlike Claude — whose persisted `thinking` text is empty every time — Codex writes a real
-      // reasoning summary here, so this branch actually renders.
-      const summary = Array.isArray(p.summary)
-        ? p.summary
-            .map((s) =>
-              s !== null && typeof s === "object" && !Array.isArray(s) && typeof s.text === "string"
-                ? s.text
-                : "",
-            )
-            .filter(Boolean)
-            .join("\n\n")
-        : "";
-      if (summary.trim() === "") return NO_CHANGE; // encrypted-only reasoning row — nothing to show
-      entries.push({
-        uuid,
-        ts,
-        role: "assistant",
-        parts: [{ kind: "thinking", ...clamp(stripAnsi(summary), MAX_TEXT_CHARS) }],
-      });
-      return reduction(entries, changed);
-    }
+function codexMessage(state: CodexState, item: CodexItem): Reduction {
+  const p = item.payload;
+  state.unknown.role(p.role);
+  // Injected developer/system text is plumbing, not something the operator said.
+  if (p.role !== "user" && p.role !== "assistant") return NO_CHANGE;
+  const body = stripAnsi(blockText(p.content));
+  if (p.role === "user" && isInjectedContext(body)) return NO_CHANGE;
+  const parts = codexMessageParts(p.content, body);
+  return parts.length === 0 ? NO_CHANGE : reduction([{ uuid: item.uuid, ts: item.ts, role: p.role, parts }], new Set());
+}
 
-    // ONE branch for both call shapes. `custom_tool_call` carries the same three facts — a name, an
-    // input and a `call_id` its output is paired by — so it folds onto the structured-call path rather
-    // than beside it. The only difference is WHERE the input is and what it is: `arguments` is a JSON
-    // string, `input` is the script itself (see codexCustomInput).
-    if (p.type === "function_call" || p.type === "custom_tool_call") {
-      const name = typeof p.name === "string" ? p.name : "tool";
-      const raw = p.type === "custom_tool_call" ? p.input : p.arguments;
-      const summary = codexToolSummary(raw);
-      const part: Extract<TranscriptPart, { kind: "tool" }> = {
-        kind: "tool",
-        name,
-        summary,
-        call: classifyToolCall(
-          name,
-          p.type === "custom_tool_call" ? codexCustomInput(raw) : codexToolInput(raw),
-          summary,
-        ),
-      };
-      if (typeof p.call_id === "string") {
-        part.id = p.call_id;
-        // The turn is named here, before it exists, because `uuid` is the row's own cursor above and
-        // the part is already the object the turn will carry. `rememberPending` is what keeps an
-        // orphan call from growing this map for the life of a session.
-        rememberPending(pendingTools, p.call_id, { part, uuid });
-      }
-      entries.push({ uuid, ts, role: "assistant", parts: [part] });
-      return reduction(entries, changed);
-    }
+function codexReasoning(item: CodexItem): Reduction {
+  // Only visible summaries. An encrypted-only record supplies no text to display.
+  const summary = Array.isArray(item.payload.summary) ? blockText(item.payload.summary, "\n\n") : "";
+  if (summary.trim() === "") return NO_CHANGE;
+  return reduction([{ uuid: item.uuid, ts: item.ts, role: "assistant", parts: [{ kind: "thinking", ...clamp(stripAnsi(summary), MAX_TEXT_CHARS) }] }], new Set());
+}
 
-    if (p.type === "function_call_output" || p.type === "custom_tool_call_output") {
-      const id = typeof p.call_id === "string" ? p.call_id : "";
-      const target = pendingTools.get(id);
-      const outputText = stripAnsi(
-        p.type === "custom_tool_call_output" ? codexExecOutput(p.output).body : codexToolOutput(p.output),
-      );
-      const result: ToolResult = clamp(outputText, MAX_RESULT_CHARS);
-      // Codex writes NO error flag on this row — a command that failed and one that worked are the
-      // same shape, and the exit code sits in `metadata` rather than on the part. So `isError` stays
-      // absent here, and only a refusal is marked (see REFUSED), because that one the text names.
-      if (REFUSED.test(outputText)) result.denied = true;
-      if (target) {
-        // Mutated in place — the part already sits in an emitted entry, which is exactly why results
-        // attach without reordering anything.
-        pendingTools.delete(id);
-        target.part.result = result;
-        // The RAW field, not the unwrapped text: the exit code rides in `output`'s `metadata`, which
-        // `codexToolOutput` throws away by design.
-        if (target.part.call) enrichCall(target.part.call, p.output);
-        // The mutation above landed in a turn that went out rows ago. Name it.
-        changed.add(target.uuid);
-      } else if (outputText.trim() !== "") {
-        // Orphan output (its call fell outside a tail-read window) — kept unattached so the window
-        // never silently drops output.
-        entries.push({
-          uuid,
-          ts,
-          role: "assistant",
-          parts: [
-            { kind: "tool", name: "result", summary: "", result },
-          ],
-        });
-      }
-    }
+function codexCallParts(p: JsonObject, name: string, raw: JsonValue | undefined): CodexToolPart[] {
+  const custom = p.type === "custom_tool_call";
+  const input = custom && name === "apply_patch" ? raw : custom ? codexCustomInput(raw) : codexToolInput(raw);
+  const summary = codexToolSummary(raw);
+  return codexCalls(name, input, summary).map((call, index) => {
+    const part: CodexToolPart = { kind: "tool", name, summary, call };
+    if (typeof p.call_id === "string") part.id = index === 0 ? p.call_id : `${p.call_id}:${index}`;
+    return part;
+  });
+}
 
-    // The row added no turn, which is not the same as a row that did nothing: the common case here is
-    // a `function_call_output` whose result folded onto a call in an earlier turn, so it adds nothing
-    // of its own and has still changed something. `NO_CHANGE` here would drop that report on the floor
-    // and leave the folded result invisible to a tail, which is the one fault this exercise exists to
-    // fix. It is also the answer for a `response_item` of a type this parser ignores.
-    return reduction(entries, changed);
+function codexCall(state: CodexState, item: CodexItem): Reduction {
+  const p = item.payload;
+  const name = typeof p.name === "string" ? p.name : "tool";
+  const raw = p.type === "custom_tool_call" ? p.input : p.arguments;
+  const parts = codexCallParts(p, name, raw);
+  const entry: TranscriptEntry = { uuid: item.uuid, ts: item.ts, role: "assistant", parts };
+  if (typeof p.call_id === "string") {
+    const pending: PendingCodexTool = { part: parts[0]!, uuid: item.uuid, entry };
+    if (p.type === "custom_tool_call" && name === "exec" && typeof raw === "string") pending.script = raw;
+    rememberPending(state.pendingTools, p.call_id, pending);
   }
+  return reduction([entry], new Set());
+}
 
-  // No queue in this format's log: see `RowReducer.queued`.
-  return { push, unknowns: unknown.tally, queued: noQueue };
+function fillCodexCall(target: PendingCodexTool, raw: JsonValue | undefined, custom: boolean, id: string): void {
+  const expanded = target.script === undefined ? null : codexCodeModeParts(target.script, raw, id);
+  if (expanded !== null) {
+    target.entry.parts = expanded;
+    return;
+  }
+  const folded = codexResult(raw, custom);
+  for (const part of target.entry.parts) {
+    if (part.kind !== "tool") continue;
+    part.result = folded.result;
+    if (part.call?.kind === "execute" && folded.exitCode !== undefined) part.call.exitCode = folded.exitCode;
+  }
+}
+
+function codexResultRow(state: CodexState, item: CodexItem): Reduction {
+  const p = item.payload;
+  const id = typeof p.call_id === "string" ? p.call_id : "";
+  const target = state.pendingTools.get(id);
+  const custom = p.type === "custom_tool_call_output";
+  if (target !== undefined) {
+    state.pendingTools.delete(id);
+    fillCodexCall(target, p.output, custom, id);
+    return reduction([], new Set([target.uuid]));
+  }
+  const { result } = codexResult(p.output, custom);
+  if (result.text.trim() === "" && result.imageUrl === undefined) return NO_CHANGE;
+  // A tail may start at the result: keep its output/image without inventing the missing call.
+  return reduction([{ uuid: item.uuid, ts: item.ts, role: "assistant", parts: [{ kind: "tool", name: "result", summary: "", result }] }], new Set());
+}
+
+function reduceCodex(state: CodexState, line: string): Reduction {
+  const item = readCodexItem(state, line);
+  if (item === null) return NO_CHANGE;
+  switch (item.payload.type) {
+    case "message": return codexMessage(state, item);
+    case "reasoning": return codexReasoning(item);
+    case "function_call":
+    case "custom_tool_call": return codexCall(state, item);
+    case "function_call_output":
+    case "custom_tool_call_output": return codexResultRow(state, item);
+    default: return NO_CHANGE;
+  }
+}
+
+/** The same reading one row at a time, with result mutations reported to the live chat window. */
+export function createCodexReducer(): RowReducer {
+  const state: CodexState = { seen: new Map(), pendingTools: new Map(), unknown: createUnknownCounter(CODEX_KNOWN) };
+  return { push: (line) => reduceCodex(state, line), unknowns: state.unknown.tally, queued: noQueue };
 }
 
 /**
