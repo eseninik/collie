@@ -605,10 +605,9 @@ function LaunchRow({
   refusal: string | undefined;
   onLaunch: (command: string) => void;
 }) {
-  // A fixed folder → that folder, shortened under home; absent → "here" (opens beside this pane,
-  // wherever it is), which is the one thing the switcher can say that the dashboard's "here"
-  // cannot — there, home is already implied and this suffix is withheld instead (launch-strip.tsx).
-  const suffix = launcher.cwd !== undefined ? shortenHome(launcher.cwd, home) : t("chat.switcher.launch.here");
+  // A fixed folder → that folder, shortened under home; absent → no suffix (owner 2026-11-14: a row
+  // opening beside this pane reads as its bare label, like the dashboard's launch strip).
+  const suffix = launcher.cwd !== undefined ? shortenHome(launcher.cwd, home) : undefined;
   const disabled = busy || refusal !== undefined;
   return (
     <button
@@ -628,7 +627,7 @@ function LaunchRow({
       <span className="flex min-w-0 flex-col">
         <span className="flex min-w-0 items-baseline gap-1.5">
           <span className="truncate text-sm font-medium">{launcher.label}</span>
-          <span className="shrink-0 truncate font-mono text-xs text-muted-foreground">{suffix}</span>
+          {suffix !== undefined && <span className="shrink-0 truncate font-mono text-xs text-muted-foreground">{suffix}</span>}
         </span>
         {/* The command is operator-authored text going into a text node, never markup. */}
         <span className="truncate font-mono text-xs text-muted-foreground">{launcher.command}</span>
