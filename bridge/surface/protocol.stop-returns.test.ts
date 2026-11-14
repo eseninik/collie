@@ -138,6 +138,17 @@ describe("a Stop early in a turn on Claude Code 2.1.319 gives the prompt back to
     expect(r.protocol.returnedSource("main", "%1", "stop-ret-000001")).toBe(MESSAGE);
   });
 
+  test("a direct phone send gets no Send and Discard card when a Stop gives it back (owner, 2026-11-14)", async () => {
+    const pane = new LabPane();
+    const r = rig(pane);
+    const sent = await r.protocol.handle({ id: "stop-ret-000004", text: MESSAGE, mode: "send", fromPhone: true }, r.target);
+    expect(sent.receipt?.outcome).toBe("sent");
+    r.clock.now += 7000;
+    const stopped = await r.stop.handle("stop-req-000004", "%1", "claude");
+    expect(stopped.kind === "receipt" && stopped.receipt.returned).toBeUndefined();
+    expect(r.protocol.queuedOf("main", "%1")).toEqual([]);
+  });
+
   test("a turn that ends with no Stop leaves no card: two idle polls over an empty box let the send go", async () => {
     const pane = new LabPane();
     const r = rig(pane);

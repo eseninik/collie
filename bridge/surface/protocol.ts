@@ -3973,7 +3973,8 @@ export class SendProtocol {
     // A send the harness holds for after the turn: a card until the journal or the box closes it (ADR 0122).
     // A steer is kept too, with no card of its own: a Stop may give it back together with the queue. So is a
     // send that started a turn: a Stop early in it gives the prompt back to the box (queued.ts, SUBMITTED).
-    const submitted = (receipt.outcome === "sent" || receipt.outcome === "effective") && receipt.queued !== true;
+    // A direct send is not: it shows no Send and Discard card, and its next send replaces the box.
+    const submitted = (receipt.outcome === "sent" || receipt.outcome === "effective") && receipt.queued !== true && !directSend(state.match, state.request);
     if ((receipt.outcome === "sent" && receipt.queued === true) || receipt.outcome === "steered" || submitted) {
       this.queuedSends.add({
         id: state.record.id,
