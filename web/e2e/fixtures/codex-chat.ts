@@ -46,7 +46,7 @@ export async function openComparisonChat(page: Page, harness: ChatHarness) {
     head: FIXTURE_SEQ_BASE + entries.length - 1,
     oldest: FIXTURE_SEQ_BASE,
     hasOlder: false,
-    upserts: entries.map((entry, index) => ({ ...entry, seq: FIXTURE_SEQ_BASE + index })),
+    upserts: entries.map((entry, index) => Object.assign({}, entry, { seq: FIXTURE_SEQ_BASE + index })),
   };
   await installPaneWorld(page, {
     paneId: agent.paneId,
