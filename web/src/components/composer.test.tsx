@@ -392,7 +392,7 @@ describe("Composer — send", () => {
     server.use(...sendHandler((request) => sendAnswer(request.id, "typed_not_submitted", "modal_cue", { offers: ["submit", "discard", "keys"] })));
     const props: ComponentProps<typeof Composer> = {
       paneId: "w1:p1",
-      agent: "claude",
+      agent: "pi",
       isShell: false,
       gone: false,
       readOnly: false,
@@ -471,7 +471,7 @@ describe("Composer: the Surface table (M56 spec 06)", () => {
 
   it("composer draft: the bridge refuses draft_present and the strip offers Add, Replace and Cancel", async () => {
     server.use(...sendHandler((request) => sendAnswer(request.id, "refused", "draft_present", { offers: ["append", "replace", "cancel"], surface: DRAFT })));
-    renderComposerWithStatus({ surface: DRAFT });
+    renderComposerWithStatus({ agent: "pi", surface: DRAFT });
     await typeAndSend("my message");
     await waitFor(() => expect(screen.getByRole("button", { name: "Add to it" })).toBeInTheDocument());
     expect(screen.getByRole("button", { name: "Replace" })).toBeInTheDocument();
@@ -502,7 +502,7 @@ describe("Composer: the Surface table (M56 spec 06)", () => {
       ),
     );
     const onAnswerDialog = vi.fn();
-    const { container } = renderWithContainer({ surface: UNREADABLE, onAnswerDialog, dialogCard: true });
+    const { container } = renderWithContainer({ agent: "pi", surface: UNREADABLE, onAnswerDialog, dialogCard: true });
     // A false overlay hit must never block a send: the field and Send stay as on a free box.
     expect(screen.getByPlaceholderText("Type a reply…")).toBeEnabled();
     const user = await typeAndSend("carry on please");
@@ -542,7 +542,7 @@ describe("Composer: the Surface table (M56 spec 06)", () => {
           : sendAnswer(request.id, "sent"),
       ),
     );
-    const { container } = renderWithContainer({ surface: NO_MATCH });
+    const { container } = renderWithContainer({ agent: "pi", surface: NO_MATCH });
     const user = await typeAndSend("ls -la");
     await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent(/could not find the input box/i));
     expect(screen.queryByRole("button", { name: "Answer the dialog" })).toBeNull();
@@ -677,7 +677,7 @@ describe("Composer: a read dialog is refused at the thumb", () => {
       ),
     );
     const onAnswerDialog = vi.fn();
-    const { container } = renderWithContainer({ surface: { revision: 4, turn: "idle", modal: "unreadable", composer: "empty" }, onAnswerDialog, dialogCard: true });
+    const { container } = renderWithContainer({ agent: "pi", surface: { revision: 4, turn: "idle", modal: "unreadable", composer: "empty" }, onAnswerDialog, dialogCard: true });
 
     await user.type(screen.getByPlaceholderText("Type a reply…"), "for after the dialog");
     await user.click(screen.getByRole("button", { name: "Send" }));
@@ -706,7 +706,7 @@ describe("Composer: a read dialog is refused at the thumb", () => {
       ),
     );
     const onAnswerDialog = vi.fn();
-    const { container } = renderWithContainer({ surface: unreadable, onAnswerDialog });
+    const { container } = renderWithContainer({ agent: "pi", surface: unreadable, onAnswerDialog });
     await user.type(screen.getByRole("textbox"), "carry on please");
     await user.click(screen.getByRole("button", { name: "Send" }));
 
@@ -752,7 +752,7 @@ describe("Composer: a read dialog is refused at the thumb", () => {
     const user = userEvent.setup();
     const unreadable = { revision: 4, turn: "idle", modal: "unreadable", composer: "empty" } as const;
     server.use(...sendHandler((request) => sendAnswer(request.id, "refused", "unconfirmed", { offers: ["commit", "keys"], rowsHash: "0abc", surface: unreadable })));
-    const { container } = renderWithContainer({ surface: unreadable });
+    const { container } = renderWithContainer({ agent: "pi", surface: unreadable });
     await user.type(screen.getByRole("textbox"), "carry on please");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Type here" })).toBeInTheDocument());
@@ -1725,7 +1725,7 @@ function renderDraftHarness(overrides: Partial<ComponentProps<typeof Composer>> 
     const [stable, setStable] = useState<string | null>(initialDraft);
     const props: ComponentProps<typeof Composer> = {
       paneId: "w1:p1",
-      agent: "claude",
+      agent: "pi",
       isShell: false,
       gone: false,
       readOnly: false,
@@ -2063,7 +2063,7 @@ describe("Composer — in-flight echo suppression (match-last-sent)", () => {
     const [draft, setDraft] = useState<string | null>(null);
     const props: ComponentProps<typeof Composer> = {
       paneId: "w1:p1",
-      agent: "claude",
+      agent: "pi",
       isShell: false,
       gone: false,
       readOnly: false,
@@ -2175,7 +2175,7 @@ describe("Composer — no draft preview while its own send is in flight", () => 
     const [draft, setDraft] = useState<string | null>(null);
     const props: ComponentProps<typeof Composer> = {
       paneId: "w1:p1",
-      agent: "claude",
+      agent: "pi",
       isShell: false,
       gone: false,
       readOnly: false,
@@ -3341,12 +3341,12 @@ describe("Composer — the composer is one box", () => {
   const boxOf = (el: HTMLElement) => el.parentElement!;
   const attach = () => screen.getByRole("button", { name: "Attach file" });
 
-  // THE SEND KEY IS UNCHANGED BY THE NEW SHAPE, and it is the first thing a ported pattern gets
-  // wrong: every kit this was read from sends on a bare Enter. Enter is a shell character here, so
-  // it must stay a newline, and Cmd/Ctrl+Enter is the submit. Nothing pinned this before.
+  // Outside the direct-send profiles, a phone's bare Enter still inserts a newline.
+  // This retained pi behavior uses Ctrl/Cmd+Enter to submit. Claude/Codex have
+  // separate acceptance tests for a bare Enter that sends.
   it("still sends on Ctrl+Enter, and still leaves a bare Enter to the textarea", async () => {
     const user = userEvent.setup();
-    const props = renderComposer();
+    const props = renderComposer({ agent: "pi" });
 
     await user.type(field(), "looks good");
     // `fireEvent` returns false when the handler called preventDefault, so this reads the two
@@ -5005,7 +5005,7 @@ describe("outcome at the thumb", () => {
   });
 
   it("refused draft_present: Add to it, Replace and Cancel, with the draft kept", async () => {
-    await send(() => sendAnswer("x", "refused", "draft_present", { offers: ["append", "replace", "cancel"], surface: wayOutCase("draft").surface }));
+    await send(() => sendAnswer("x", "refused", "draft_present", { offers: ["append", "replace", "cancel"], surface: wayOutCase("draft").surface }), { agent: "pi" });
     const strip = await screen.findByTestId("send-offers");
     for (const word of ["Add to it", "Replace", "Cancel"]) expect(strip).toHaveTextContent(word);
     expect(screen.getByRole("textbox")).toHaveValue("hello there");
@@ -5013,7 +5013,7 @@ describe("outcome at the thumb", () => {
   });
 
   it("typed_not_submitted: Submit and Discard are new requests with new ids, and the draft is kept", async () => {
-    const user = await send(() => sendAnswer("x", "typed_not_submitted", "mismatch", { offers: ["submit", "discard", "keys"] }));
+    const user = await send(() => sendAnswer("x", "typed_not_submitted", "mismatch", { offers: ["submit", "discard", "keys"] }), { agent: "pi" });
     await screen.findByRole("button", { name: "Submit" });
     expect(screen.getByRole("button", { name: "Discard" })).toBeInTheDocument();
     const first = recordedSends()[0]!.id;
@@ -5030,7 +5030,7 @@ describe("outcome at the thumb", () => {
   it.each(["mismatch", "changed", "modal_cue", "stale_token", "submit_failed", "dialog_open", "unreadable"] as const)(
     "typed_not_submitted %s with no frame: Submit and Discard show, and Submit carries the rows hash it was offered with",
     async (reason) => {
-      const user = await send(() => sendAnswer("x", "typed_not_submitted", reason, { offers: offersFor("typed_not_submitted", reason, false), rowsHash: "0f00ba", surface: SURFACES.noMatch }));
+      const user = await send(() => sendAnswer("x", "typed_not_submitted", reason, { offers: offersFor("typed_not_submitted", reason, false), rowsHash: "0f00ba", surface: SURFACES.noMatch }), { agent: "pi" });
       await screen.findByRole("button", { name: "Submit" });
       expect(screen.getByRole("button", { name: "Discard" })).toBeInTheDocument();
       expect(refusalText()).toMatch(/Your text is in the box, but Enter was not pressed\. Submit it or discard it\./u);
@@ -5041,7 +5041,7 @@ describe("outcome at the thumb", () => {
   );
 
   it("typed_not_submitted with no frame: Discard carries the rows hash it was offered with", async () => {
-    const user = await send(() => sendAnswer("x", "typed_not_submitted", "mismatch", { offers: offersFor("typed_not_submitted", "mismatch", false), rowsHash: "0f00ba", surface: SURFACES.noMatch }));
+    const user = await send(() => sendAnswer("x", "typed_not_submitted", "mismatch", { offers: offersFor("typed_not_submitted", "mismatch", false), rowsHash: "0f00ba", surface: SURFACES.noMatch }), { agent: "pi" });
     await user.click(await screen.findByRole("button", { name: "Discard" }));
     await waitFor(() => expect(recordedSends()).toHaveLength(2));
     expect(recordedSends()[1]).toMatchObject({ mode: "discard", text: "hello there", rowsHash: "0f00ba" });
@@ -5184,7 +5184,7 @@ describe("outcome at the thumb", () => {
     for (const reason of SEND_REASONS) {
       server.use(...sendHandler(() => sendAnswer("x", outcomeOf(reason), reason, { offers: ["keys"], surface: SURFACES.noMatch })));
       const user = userEvent.setup();
-      renderState("free");
+      renderState("free", { agent: "pi" });
       await user.type(screen.getByRole("textbox"), "hello there");
       await user.click(screen.getByRole("button", { name: "Send" }));
       await waitFor(() => expect(refusalText(), reason).not.toBe(""));
@@ -5282,7 +5282,7 @@ describe("the cap (M56 spec 09)", () => {
 
   it("under the cap the manual Send is two taps, and no commit carries a cap ack", async () => {
     server.use(...capBridge(false));
-    renderWithContainer({ surface: UNREADABLE });
+    renderWithContainer({ agent: "pi", surface: UNREADABLE });
     const user = await typeAndSend("carry on please");
     await user.click(await screen.findByRole("button", { name: "Type here" }));
     await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(""));
@@ -5291,7 +5291,7 @@ describe("the cap (M56 spec 09)", () => {
 
   it("at the cap the commit is refused once more with the count and the version, and the next tap carries the ack", async () => {
     server.use(...capBridge(true));
-    const { container } = renderWithContainer({ surface: UNREADABLE });
+    const { container } = renderWithContainer({ agent: "pi", surface: UNREADABLE });
     const user = await typeAndSend("carry on please");
     await user.click(await screen.findByRole("button", { name: "Type here" }));
 
@@ -5318,7 +5318,7 @@ describe("the cap (M56 spec 09)", () => {
           : sendAnswer(request.id, "refused", "unconfirmed", { offers: ["commit", "keys"], rowsHash: "0f00ba", surface: UNREADABLE, cap: { ...CAP, version: "-" } }),
       ),
     );
-    const { container } = renderWithContainer({ surface: UNREADABLE });
+    const { container } = renderWithContainer({ agent: "pi", surface: UNREADABLE });
     const user = await typeAndSend("carry on please");
     await user.click(await screen.findByRole("button", { name: "Type here" }));
     await waitFor(() => expect(container.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent("on agent 5 times today"));
@@ -5327,7 +5327,7 @@ describe("the cap (M56 spec 09)", () => {
 
   it("the cap never removes the manual Send or the Keys dock", async () => {
     server.use(...capBridge(true));
-    renderWithContainer({ surface: UNREADABLE });
+    renderWithContainer({ agent: "pi", surface: UNREADABLE });
     const user = await typeAndSend("carry on please");
     await user.click(await screen.findByRole("button", { name: "Type here" }));
     await screen.findByRole("button", { name: "Confirm and type" });
@@ -5340,7 +5340,7 @@ describe("the cap (M56 spec 09)", () => {
 
   it("dismissing the notice and tapping Send again starts over from the first tap, with no ack held", async () => {
     server.use(...capBridge(true));
-    renderWithContainer({ surface: UNREADABLE });
+    renderWithContainer({ agent: "pi", surface: UNREADABLE });
     const user = await typeAndSend("carry on please");
     await user.click(await screen.findByRole("button", { name: "Type here" }));
     await screen.findByRole("button", { name: "Confirm and type" });
