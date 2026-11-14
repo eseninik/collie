@@ -172,8 +172,8 @@ The final narrow check passed: 2 passed, exit 0,
 `/tmp/direct-send-agent-chat-pi-capture-valid-base.log`.
 These fixture corrections keep both preview assertions intact.
 
-Existing changed tests: 78 expanded cases (including the seven-reason recovery
-parameterization and the two-head hold-release parameterization), across 9 files.
+Existing changed tests: 79 expanded cases (including the seven-reason recovery
+parameterization and the two-head hold-release parameterization), across 10 files.
 The full title list above is authoritative; grouped helper lists include their
 positive and negative controls.
 
@@ -186,3 +186,10 @@ Two later public-seam tests pin the brief's scope without implementation access:
   is ordinary text and a later line starts with `/model`; the full body is sent.
 
 The narrow base proof is `/tmp/direct-send-profile-multiline-base.log`.
+
+### web/src/components/composer-box.test.tsx
+
+- shows Expand only past the cap, and takes it away a row under it (Altan, 2026-11-08)
+
+The extra line now uses Shift+Enter. Bare Enter sends on the direct Claude profile
+under the owner's acceptance. The cap and Expand assertions remain intact.
