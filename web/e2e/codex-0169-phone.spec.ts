@@ -110,7 +110,7 @@ async function noSendWarnings(page: Page) {
 }
 
 for (const state of ["idle", "working", "queued", "narrow"] as const) {
-  test(`@oracle:requirement @req:A1 @req:A2-CONVERSATION Codex 0.169 ${state} shows the conversation on the phone`, async ({ page }) => {
+  test(`@oracle:requirement Codex 0.169 ${state} shows the conversation on the phone`, async ({ page }) => {
     await openPane(page, "codex", CAPTURES.codex[state], state === "idle" ? "idle" : "working");
     await expect(page.getByText("what changed today?", { exact: true })).toBeVisible();
     await expect(page.getByText("One commit: abc1234.", { exact: true })).toBeVisible();
@@ -121,7 +121,7 @@ for (const state of ["idle", "working", "queued", "narrow"] as const) {
 
 for (const harness of ["codex", "claude"] as const) {
   for (const state of ["idle", "working"] as const) {
-    test(`@oracle:requirement @req:A2-SEND ${harness} ${state}: Enter sends 600+ Russian characters from the phone`, async ({ page }) => {
+    test(`@oracle:requirement ${harness} ${state}: Enter sends 600+ Russian characters from the phone`, async ({ page }) => {
       expect(LONG_MESSAGE.length).toBeGreaterThanOrEqual(600);
       const { posted, agent } = await openPane(page, harness, CAPTURES[harness][state], state);
       const field = page.getByRole("textbox");
@@ -138,7 +138,7 @@ for (const harness of ["codex", "claude"] as const) {
     });
   }
 
-  test(`@oracle:requirement @req:A2-IMAGE ${harness}: the phone composer attaches an image and sends its path`, async ({ page }) => {
+  test(`@oracle:requirement ${harness}: the phone composer attaches an image and sends its path`, async ({ page }) => {
     const { agent, posted } = await openPane(page, harness, CAPTURES[harness].idle);
     const uploads: Buffer[] = [];
     const path = "/tmp/collie-phone.png";
@@ -171,7 +171,7 @@ for (const harness of ["codex", "claude"] as const) {
   });
 }
 
-test("@oracle:requirement @req:A2-DIALOG a real Codex 0.169 dialog blocks Enter on the phone", async ({ page }) => {
+test("@oracle:requirement a real Codex 0.169 dialog blocks Enter on the phone", async ({ page }) => {
   const { agent, posted, world } = await openPane(page, "codex", CAPTURES.codex.dialog);
   const field = page.getByRole("textbox");
   const message = "Это сообщение должно остаться на телефоне до закрытия диалога.";
