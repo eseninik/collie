@@ -2520,6 +2520,41 @@
    "version": "0.167.0",
    "state": "running"
   },
+  "codex--v0169-idle--w120.txt": {
+   "harness": "codex",
+   "version": "0.169.0",
+   "state": "idle"
+  },
+  "codex--v0169-idle-after-turn--w120.txt": {
+   "harness": "codex",
+   "version": "0.169.0",
+   "state": "idle"
+  },
+  "codex--v0169-idle-tip--w80.txt": {
+   "harness": "codex",
+   "version": "0.169.0",
+   "state": "idle"
+  },
+  "codex--v0169-model-dialog--w120.txt": {
+   "harness": "codex",
+   "version": "0.169.0",
+   "state": "dialog"
+  },
+  "codex--v0169-working--w120.txt": {
+   "harness": "codex",
+   "version": "0.169.0",
+   "state": "running"
+  },
+  "codex--v0169-working-queued--w120.txt": {
+   "harness": "codex",
+   "version": "0.169.0",
+   "state": "running"
+  },
+  "codex--v0169-working-queued--w80.txt": {
+   "harness": "codex",
+   "version": "0.169.0",
+   "state": "running"
+  },
   "codex--working.txt": {
    "harness": "codex",
    "version": "unversioned",

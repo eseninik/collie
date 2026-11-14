@@ -123,6 +123,13 @@ const PINNED = [
   "codex--v0167-trust--w120.txt",
   "codex--v0167-trust--w80.txt",
   "codex--v0167-working--w120.txt",
+  "codex--v0169-idle--w120.txt",
+  "codex--v0169-idle-after-turn--w120.txt",
+  "codex--v0169-idle-tip--w80.txt",
+  "codex--v0169-model-dialog--w120.txt",
+  "codex--v0169-working--w120.txt",
+  "codex--v0169-working-queued--w120.txt",
+  "codex--v0169-working-queued--w80.txt",
   "codex--working.txt",
 ];
 
