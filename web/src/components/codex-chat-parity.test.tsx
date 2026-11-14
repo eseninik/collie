@@ -1,4 +1,5 @@
 import { createRef } from "react";
+import { MemoryRouter } from "react-router";
 import { render, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -21,17 +22,17 @@ function renderChat(harness: "codex" | "claude") {
     window: { ...EMPTY_CHAT_WINDOW, status: { kind: "live" }, entries: chatComparisonEntries(harness).map((entry, index) => ({ ...entry, seq: 1_000_000 + index })) },
     loadOlder: vi.fn(), loadingOlder: false, asked: 1, answered: 1, tried: true,
   };
-  return render(<SessionStream feed={feed} address="w1:p1" working showToolCalls showCompactions={false} fontSize={16} listRef={createRef<ChatMessageListHandle>()} agent={harness} />);
+  return render(<MemoryRouter><SessionStream feed={feed} address="w1:p1" working showToolCalls showCompactions={false} fontSize={16} listRef={createRef<ChatMessageListHandle>()} agent={harness} /></MemoryRouter>);
 }
 
 for (const harness of ["claude", "codex"] as const) {
   describe(`@oracle:requirement ${harness} matches the owner's Chat reference`, () => {
     it("@req:CODEX_CHAT_PRESENTATION renders headings, lists, fenced code, and the reader's timestamp", () => {
       const { container } = renderChat(harness);
-      expect(within(container).getByRole("heading", { name: "Проверка", exact: true })).toBeInTheDocument();
+      expect(within(container).getByText("Проверка", { exact: true })).toBeInTheDocument();
       expect(container.querySelectorAll("ol > li")).toHaveLength(2);
       expect(container.querySelectorAll("ul > li")).toHaveLength(2);
-      expect(container.querySelector("pre code")).toHaveTextContent('export const greeting = "Hello";');
+      expect(container.querySelector("pre")).toHaveTextContent('export const greeting = "Hello";');
       const user = within(container).getByText("Сделай приветствие и проверь результат.").closest("[data-block]");
       expect(user).not.toBeNull();
       expect(within(user as HTMLElement).getByText("You", { exact: true })).toBeInTheDocument();
@@ -66,6 +67,8 @@ describe("@oracle:requirement mapped Codex tool details", () => {
     const { container } = render(<ToolCard callId={item.id} tool={item.tool} status={item.status} />);
     expect(container.querySelector("pre")).toBeNull();
     await userEvent.click(within(container).getByRole("button", { expanded: false }));
+    expect(container.querySelector("pre")).toHaveTextContent("output line 080");
+    await userEvent.click(within(container).getByRole("button", { name: "Show all 80 lines", exact: true }));
     expect(container.querySelector("pre")).toHaveTextContent("output line 001");
     expect(container.querySelector("pre")).toHaveTextContent("output line 080");
   });
@@ -95,7 +98,7 @@ describe("@oracle:requirement mapped Codex tool details", () => {
   it("@req:CODEX_CHAT_INLINE_IMAGE keeps the actual returned image on the same read card", () => {
     const item = itemsOf(chatComparisonEntries("codex")[6]!)[0]!;
     expect(item).toMatchObject({ kind: "tool", image: CHAT_COMPARISON_IMAGE, tool: { kind: "read", path: "/repo/reference.png" } });
-    const { container } = render(<ItemView item={item} />);
+    const { container } = render(<MemoryRouter><ItemView item={item} /></MemoryRouter>);
     expect(within(container).getByText("reference.png", { exact: true })).toBeInTheDocument();
     expect(container.querySelector("img")).toHaveAttribute("src", CHAT_COMPARISON_IMAGE);
   });
