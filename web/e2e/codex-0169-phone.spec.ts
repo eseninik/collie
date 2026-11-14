@@ -11,6 +11,7 @@ import {
   fixtureTranscript,
   sendAnswer,
 } from "@/test/handlers";
+import { wayOutCase } from "@/test/way-out-states";
 import { installApiStub, installPaneWorld, paneCapture, pinLocale } from "./fixtures/api";
 
 // Owner's 2026-11-14 brief, A1/A2: the actual phone composer must remain usable over the new
@@ -76,6 +77,13 @@ async function openPane(page: Page, harness: Harness, screen: string, state: Sta
     // same sendAnswer fixture as the unit suite.
     const body = route.request().postDataJSON() as PostedMessage;
     posted.push(body);
+    // An unrecognised dialog still takes one protocol request. The bridge refuses that first
+    // request before typing; only a separate explicit commit could proceed (M56 spec 06).
+    if (harness === "codex" && screen === CAPTURES.codex.dialog) {
+      return route.fulfill({ json: sendAnswer(body.id, "refused", "unconfirmed", {
+        offers: ["commit", "keys"], rowsHash: "0f00ba", surface: wayOutCase("unreadable").surface,
+      }) });
+    }
     return route.fulfill({ json: sendAnswer(body.id, "sent", undefined, { queued: state === "working" }) });
   });
   await page.route((url) => url.pathname === "/api/send/receipts", (route) => route.fulfill({ json: { receipts: [] } }));
@@ -164,15 +172,17 @@ for (const harness of ["codex", "claude"] as const) {
 }
 
 test("@oracle:requirement @req:A2-DIALOG a real Codex 0.169 dialog blocks Enter on the phone", async ({ page }) => {
-  const { posted, world } = await openPane(page, "codex", CAPTURES.codex.dialog);
+  const { agent, posted, world } = await openPane(page, "codex", CAPTURES.codex.dialog);
   const field = page.getByRole("textbox");
   const message = "Это сообщение должно остаться на телефоне до закрытия диалога.";
+  await expect(page.getByRole("group", { name: en["unreadDialog.caption"], exact: true })).toBeVisible();
   await field.fill(message);
-  await expect(page.getByRole("button", { name: en["composer.send.dialogFirst"], exact: true })).toBeVisible();
   await field.press("Enter");
-  // A frame after the handler observes the key, so these assertions do not race its event delivery.
-  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-  expect(posted).toHaveLength(0);
+  await expect.poll(() => posted.length).toBe(1);
+  expect(posted[0]).toMatchObject({ pane: agent.paneId, text: message, mode: "send" });
+  expect(posted[0]).not.toHaveProperty("rowsHash");
+  await expect(page.getByText(en["composer.protocol.unconfirmed"], { exact: false })).toBeVisible();
   expect(world.writes).toHaveLength(0);
+  await expect(page.getByText(en["composer.status.sent"], { exact: true })).toHaveCount(0);
   await expect(field).toHaveValue(message);
 });

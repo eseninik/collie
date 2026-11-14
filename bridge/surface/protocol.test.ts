@@ -1936,22 +1936,24 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
     expect(pane.keysSeen).not.toContain("Enter");
   });
 
-  test("a provisional Codex: the probe passes though the hint row under the box hides at the first character (lab screens of 0.163.0, on 0.164.0)", async () => {
-    const { pane, send } = codex({ version: "0.164.0" });
+  // The captured 0.163.0 screen shape is independent of the simulated version. Keep the latter
+  // above the verified range so these scenarios continue to exercise the provisional probe.
+  test("a provisional Codex: the probe passes though the hint row under the box hides at the first character (lab screens of 0.163.0, simulated provisional 0.170.0)", async () => {
+    const { pane, send } = codex({ version: "0.170.0" });
     const answer = await send("please list the files in this folder");
     expect(answer.receipt).toMatchObject({ outcome: "sent", profileStatus: "provisional", keys: ["probe", "Backspace", "Tab"] });
     expect(pane.transcript.at(-1)).toBe("› please list the files in this folder");
   });
 
   test("a fresh Codex hides its welcome picture at the first character: the rows above only lost text, so the probe passes (lab, 0.163.0)", async () => {
-    const { pane, send } = codex({ version: "0.164.0" });
+    const { pane, send } = codex({ version: "0.170.0" });
     pane.codexWelcome = CODEX_WELCOME;
     const answer = await send("please list the files in this folder");
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Tab"] });
   });
 
   test("a row above the Codex box that gains text no longer fails the probe: the send goes in with Tab, never Enter (2026-10-17 decision)", async () => {
-    const { pane, send } = codex({ version: "0.164.0" });
+    const { pane, send } = codex({ version: "0.170.0" });
     // Rows high above the box, past the profile's volatile band over the top edge.
     pane.transcript = ["• first", "• second", "• third", "• fourth", "• fifth", "• sixth", "• seventh", "• eighth"];
     pane.afterInput = (p, what) => {
@@ -1965,7 +1967,7 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
   });
 
   test("a row under the Codex box that is no hint still fails the probe", async () => {
-    const { pane, send } = codex({ version: "0.164.0" });
+    const { pane, send } = codex({ version: "0.170.0" });
     pane.afterInput = (p, what) => {
       if (what.startsWith("type:")) p.codexHint = "  a row that is no hint";
     };
@@ -11315,7 +11317,9 @@ describe("a command on a fresh Codex 0.163.0 screen, whose welcome picture hides
   });
 });
 
-describe("a probed message into a tall Codex 0.166.0 pane (harness lab drift, 2026-10-29)", () => {
+describe("a provisional Codex probing tall 0.166.0 captures (harness lab drift, 2026-10-29)", () => {
+  // The fixtures stay byte-faithful 0.166.0 captures. The simulated 0.170.0 instance is beyond
+  // the verified range, which is what requires the probe whose effects these tests pin.
   // eslint-disable-next-line no-control-regex
   const plain = (row: string): string => row.replace(/\u001b\[[0-9;:?]*[ -/]*[@-~]/gu, "");
   const pane = (name: string): string[] => readFileSync(join(import.meta.dirname, "..", "..", "web", "src", "fixtures", "panes", name), "utf8").replace(/\n$/u, "").split("\n");
@@ -11350,39 +11354,39 @@ describe("a probed message into a tall Codex 0.166.0 pane (harness lab drift, 20
 
   test("the 17-row logo hides at the probe character and returns after Backspace: the rows above only lost text, so the probe passes and Tab sends", async () => {
     const fake = logo();
-    const answer = await rig({ pane: fake, harness: "codex", version: "0.166.0" }).send("reply with one word: ready");
+    const answer = await rig({ pane: fake, harness: "codex", version: "0.170.0" }).send("reply with one word: ready");
     expect(answer.receipt).toMatchObject({ outcome: "sent", profileStatus: "provisional", keys: ["probe", "Backspace", "Tab"] });
     expect(fake.transcript.at(-1)).toBe("› reply with one word: ready");
   });
 
   test("a message's probe reads only the box and the rows under it (Codex takes text in a turn): the logo is no factor, with or without losesText", async () => {
-    const answer = await rig({ pane: logo(), harness: "codex", version: "0.166.0", edit: noLosesText }).send("reply with one word: ready");
+    const answer = await rig({ pane: logo(), harness: "codex", version: "0.170.0", edit: noLosesText }).send("reply with one word: ready");
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Tab"] });
   });
 
   test("a command compares the rows above too: the logo only lost its rows (idle.volatile.above.losesText), so /status goes in", async () => {
     const fake = logo();
-    const answer = await rig({ pane: fake, harness: "codex", version: "0.166.0" }).send("/status", { mode: "command" });
+    const answer = await rig({ pane: fake, harness: "codex", version: "0.170.0" }).send("/status", { mode: "command" });
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
   });
 
   test("without losesText the logo going reads as a moved screen for a command, and its probe is refused", async () => {
     const fake = logo();
-    const answer = await rig({ pane: fake, harness: "codex", version: "0.166.0", edit: noLosesText }).send("/status", { mode: "command" });
+    const answer = await rig({ pane: fake, harness: "codex", version: "0.170.0", edit: noLosesText }).send("/status", { mode: "command" });
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
     expect(fake.keysSeen).not.toContain("Enter");
   });
 
   test("a lone `⚠ 1 warning · f2 to view` row under the box once it holds text is a hint, so the probe passes and Tab sends", async () => {
     const fake = warning();
-    const answer = await rig({ pane: fake, harness: "codex", version: "0.166.0" }).send("reply with one word: ready");
+    const answer = await rig({ pane: fake, harness: "codex", version: "0.170.0" }).send("reply with one word: ready");
     expect(answer.receipt).toMatchObject({ outcome: "sent", profileStatus: "provisional", keys: ["probe", "Backspace", "Tab"] });
     expect(fake.transcript.at(-1)).toBe("› reply with one word: ready");
   });
 
   test("without the warning hint the lone warning row counts as a screen that moved, and the probe is refused, as it was in the lab", async () => {
     const fake = warning();
-    const answer = await rig({ pane: fake, harness: "codex", version: "0.166.0", edit: noWarningHint }).send("reply with one word: ready");
+    const answer = await rig({ pane: fake, harness: "codex", version: "0.170.0", edit: noWarningHint }).send("reply with one word: ready");
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
     expect(fake.keysSeen.filter((key) => key === "Tab" || key === "Enter")).toEqual([]);
   });
