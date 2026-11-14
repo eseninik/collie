@@ -205,8 +205,8 @@ function HeldComposer({ paneId, draft, scope }: { paneId: string; draft?: string
     <ChromeBlock>
       <Composer
         paneId={paneId}
-        // Claude and Codex send directly and show no held card or draft notice (direct-send.ts), so the
-        // held states are drawn on an agent that keeps them.
+        // Claude and Codex send directly (direct-send.ts): their phone sends are never held and the
+        // Composer hides their terminal-draft notice, so these states are drawn on an agent that keeps both.
         agent="grok"
         isShell={false}
         gone={false}

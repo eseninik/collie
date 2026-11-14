@@ -686,7 +686,7 @@ describe("SessionStream — Send now", () => {
 // Rows from Collie's own receipts: still waiting (no button at all, one sentence), or given back to the
 // input box by a Stop (Send and Discard). The journal's own queue card is the "Send now" block above.
 describe("SessionStream — queued sends from the receipts", () => {
-  function renderReceipts(window: Partial<ChatWindow>, onReturned?: (requestId: string, action: QueuedCardAction) => Promise<boolean>) {
+  function renderReceipts(window: Partial<ChatWindow>, onReturned?: (requestId: string, action: QueuedCardAction) => Promise<boolean>, agent = "muse") {
     const listRef = createRef<ChatMessageListHandle>();
     return render(
       <SessionStream
@@ -698,7 +698,7 @@ describe("SessionStream — queued sends from the receipts", () => {
         fontSize={14}
         listRef={listRef}
         onReturned={onReturned}
-        agent="muse"
+        agent={agent}
       />,
     );
   }
@@ -787,6 +787,13 @@ describe("SessionStream — queued sends from the receipts", () => {
     expect(send).not.toBeDisabled();
     await userEvent.click(discard);
     expect(onReturned).toHaveBeenLastCalledWith("req-back-00001", "discard");
+  });
+
+  it.each(["claude", "codex"])("draws no waiting, returned or unconfirmed card on %s, which sends directly (owner, 2026-11-14)", (agent) => {
+    const { container } = renderReceipts({ queuedSends: [QUEUED, BACK, LOST] }, vi.fn(async () => true), agent);
+    expect(container.querySelector("[data-slot='stream-queued-receipts']")).toBeNull();
+    expect(container.querySelector("[data-slot='stream-returned']")).toBeNull();
+    expect(container.querySelector("[data-slot='stream-unconfirmed']")).toBeNull();
   });
 
   it("draws nothing on a window that is not live", () => {

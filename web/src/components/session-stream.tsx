@@ -18,6 +18,8 @@ import { blockOfPin, isPinnable, writingItemId } from "@/lib/message-pins";
 import type { Ask, PinRow, QueuedSendRow } from "@/lib/types";
 import { AskCard, type AskCardProps } from "@/components/ask-card";
 import { recallScroll, rememberScroll } from "@/lib/scroll-memory";
+import { findProfile, loadProfiles } from "@/lib/surface/profile";
+import { directSendProfile } from "@/lib/surface/profiles/direct-send";
 import { cn } from "@/lib/utils";
 
 // THE PANE VIEW'S SECOND BODY: the session as the agent's own record has it.
@@ -829,7 +831,8 @@ export function SessionStream({
       {window.queued.length > 0 && window.status.kind === "live" && (
         <QueuedCard queued={window.queued} sendNow={sendNow} />
       )}
-      {window.queuedSends.length > 0 && window.status.kind === "live" && (
+      {/* Claude and Codex send directly (direct-send.ts): the bridge still tracks their sends, but no card. */}
+      {window.queuedSends.length > 0 && window.status.kind === "live" && !directSendProfile(findProfile(loadProfiles(), agent ?? "")?.id) && (
         <ReceiptQueueCards rows={window.queuedSends} act={onReturned ?? null} />
       )}
 
