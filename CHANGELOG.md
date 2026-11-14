@@ -27,6 +27,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **Claude and Codex send phone messages directly into the terminal.** Ordinary messages replace a leftover draft and use the agent's native queue during a turn. The composer sends on Enter, hides terminal-draft recovery controls and failure cards, and follows an older bridge's Replace and Submit offers once each. Dialogs, missing input boxes and cap confirmation still stop a send; Codex gets one extra submit key when its first one is swallowed.
 
+### Fixed
+
+- **Codex conversations stay readable with a wrapped status line.** Recognise Codex 0.169 screens on the phone, retain both status rows, and keep real dialogs blocking sends.
+
 ## [1.28.3] - 2026-11-13
 
 **Urgent.** Claude Code's Remote Control can make Collie hold messages you send from the phone.
