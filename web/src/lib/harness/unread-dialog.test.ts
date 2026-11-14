@@ -269,6 +269,7 @@ const CARD_FIXTURES = {
       // Codex 0.167.0's agent command center (`codex agents`, `/agents`, `←` on an empty box, and the
       // trust prompt's `esc back`): a full-screen task list nothing lifts, `esc back` its way out.
       "codex--v0167-command-center--w120.txt",
+      "codex--v0169-model-dialog--w120.txt",
     ],
     notModals: [],
   },
