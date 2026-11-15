@@ -33,7 +33,7 @@
       },
       "continuationIndent": 2,
       "maxDraftRows": 100,
-      "maxTailRows": 4
+      "maxTailRows": 10
     },
     "placeholders": {
       "texts": [],
@@ -48,7 +48,7 @@
         "losesText": true
       },
       "below": {
-        "maxRows": 2,
+        "maxRows": 8,
         "footerMaxRows": 2,
         "hints": [
           "^\\s*← for agents · \\? for shortcuts(?:\\s{2,}\\S.*)?$",

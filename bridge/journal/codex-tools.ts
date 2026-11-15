@@ -119,7 +119,7 @@ export function codexResult(raw: JsonValue | undefined, custom = false): { resul
 function patchCall(operation: string, path: string, body: string[]): ToolCall[] {
   if (operation === "Delete") return [{ kind: "delete", path }];
   const destination = body.find((line) => line.startsWith("*** Move to: "))?.slice("*** Move to: ".length);
-  const diff = parseUnifiedDiff(body.join("\n"));
+  const diff = parseUnifiedDiff(body.join("\n"), { preamble: false });
   const call: ToolCall = { kind: "edit", path: destination ?? path, added: diff.added, removed: diff.removed };
   if (diff.hunks.length > 0) call.diff = diff.hunks;
   if (operation === "Add") call.created = true;

@@ -1086,11 +1086,14 @@ function popupRun(rows: readonly FrameRow[], frame: Frame, idle: IdleProfile): b
   return popupUnder(rows.map(rowText), frame.bottom, frame.interior.text, idle.volatile.below.popups) !== null;
 }
 
+/** How many rows a wrapped status may take: a narrow pane wraps Codex's status over three or more. */
+const WRAPPED_STATUS_ROWS = 8;
+
 /** A blank-top box's wrapped status is one edge, even when a continuation matches its pattern. */
-function wrappedBottomStart(rows: readonly FrameRow[], bottom: number, end: number, idle: IdleProfile): number {
+function wrappedBottomStart(rows: readonly FrameRow[], bottom: number, idle: IdleProfile): number {
   if (!blankTop(idle)) return bottom;
   const c = compile(idle);
-  const floor = Math.max(0, bottom - idle.volatile.below.maxRows, end - 1 - idle.frame.maxTailRows);
+  const floor = Math.max(0, bottom - WRAPPED_STATUS_ROWS);
   let first = bottom;
   for (let i = bottom - 1; i >= floor; i--) {
     const text = rowText(rows[i]!);
@@ -1109,7 +1112,7 @@ function findLayout(rows: readonly FrameRow[], idle: IdleProfile): Frame | null 
   // or up to `maxWidgetRows` above it when those rows are one unbroken run of a widget ({@link openFrame}).
   if (c.bottom.open) return openFrame(rows, end, idle) ?? listedLayout(rows, end, idle);
   for (let b = end - 1; b >= 0 && end - 1 - b <= idle.frame.maxTailRows; b--) {
-    if (anchored(rowText(rows[b]!), c.bottom) !== null) return frameAt(rows, wrappedBottomStart(rows, b, end, idle), idle);
+    if (anchored(rowText(rows[b]!), c.bottom) !== null) return frameAt(rows, wrappedBottomStart(rows, b, idle), idle);
   }
   return listedLayout(rows, end, idle);
 }
