@@ -102,10 +102,15 @@ const POINTED_OPTION = /^\d{1,2}\. /u;
 export function locateComposer(lines: StyledLine[]): ComposerBox | null {
   const clean = lines.map(withoutSparkles);
   const texts = clean.map((l) => rstrip(lineText(l)));
+  return wrappedComposer(lines, clean, texts) ?? singleRowComposer(lines, clean, texts);
+}
+
+/** A wrapped status is resolved first, so its continuation cannot become a second status anchor. */
+function singleRowComposer(lines: StyledLine[], clean: StyledLine[], texts: string[]): ComposerBox | null {
   // A read with no styling anywhere (herdr-core): the status and hint rows are read by their text.
   const plain = readIsUnstyled(lines);
   const statusRow = locateStatusRow(texts, clean, plain);
-  if (statusRow < 0) return wrappedComposer(lines, clean, texts);
+  if (statusRow < 0) return null;
 
   for (let i = statusRow - 1; i >= 0 && statusRow - 1 - i <= MAX_DRAFT_ROWS; i--) {
     const t = texts[i]!;
