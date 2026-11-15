@@ -52,6 +52,7 @@
         "footerMaxRows": 2,
         "hints": [
           "^\\s*← for agents · \\? for shortcuts(?:\\s{2,}\\S.*)?$",
+          "^\\s*← for agents(?:\\s{2,}\\S.*)?$",
           "^\\s*\\? for shortcuts(?:\\s{2,}\\S.*)?$",
           "^\\s*[Tt]ab to queue message$",
           "^\\s*⚠ \\d+(?: warnings?)? · f2(?: to view)?$"

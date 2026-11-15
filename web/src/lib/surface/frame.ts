@@ -1086,14 +1086,12 @@ function popupRun(rows: readonly FrameRow[], frame: Frame, idle: IdleProfile): b
   return popupUnder(rows.map(rowText), frame.bottom, frame.interior.text, idle.volatile.below.popups) !== null;
 }
 
-/** How many rows a wrapped status may take: a narrow pane wraps Codex's status over three or more. */
-const WRAPPED_STATUS_ROWS = 8;
-
 /** A blank-top box's wrapped status is one edge, even when a continuation matches its pattern. */
 function wrappedBottomStart(rows: readonly FrameRow[], bottom: number, idle: IdleProfile): number {
   if (!blankTop(idle)) return bottom;
   const c = compile(idle);
-  const floor = Math.max(0, bottom - WRAPPED_STATUS_ROWS);
+  // As many rows as the profile lets stand under the box (`volatile.below.maxRows`).
+  const floor = Math.max(0, bottom - idle.volatile.below.maxRows);
   let first = bottom;
   for (let i = bottom - 1; i >= floor; i--) {
     const text = rowText(rows[i]!);

@@ -60,3 +60,22 @@ describe("a narrow Codex pane: the wrapped status is one edge and the box is rea
     }
   }
 });
+
+// Real Codex 0.169 at 45 and 60 columns (tmux probe, 2026-11-15): the status is cut to one row with
+// `…` rather than wrapped, and at 45 columns the hint row drops `? for shortcuts`.
+describe("real narrow Codex 0.169 captures: the box is ready and only the status row is status", () => {
+  for (const width of [45, 60]) {
+    for (const transport of ["ANSI", "plain"] as const) {
+      it(`${String(width)} columns over ${transport}`, () => {
+        const capture = fixtureRows(`codex-v0169-idle-narrow-w${String(width)}.ansi`, SURFACE_FIXTURES_DIR);
+        const rows = transport === "ANSI" ? capture : rowsOf(capture.map(lineText).join("\n"));
+        expect(findInputFrame(rows, profile)).not.toBeNull();
+        expect(codexAdapter.composerReady!(rows)).toBe(true);
+        expect(codexAdapter.extractInputDraft(rows)).toBeNull();
+        expect(codexAdapter.extractStatusLines(rows).map(lineText)).toEqual([expect.stringMatching(/^ {2}GPT-6\.1-Sol high · .*…$/u)]);
+        const read = foldSurface([{ seq: 1, source: "screen", at: 0, revision: 1, rows, ask: null }], { idle: profile, pollMs: 1000 });
+        expect(read.surface).toMatchObject({ modal: "none", composer: "empty" });
+      });
+    }
+  }
+});
