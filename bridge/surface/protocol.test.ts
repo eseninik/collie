@@ -2123,6 +2123,39 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
     expect(pane.keysSeen).not.toContain("Tab");
   });
 
+  // Local, 1.28.5 port review: since 1.28.5 a command may take the turn-aware compare, and on Codex an
+  // answer streams with no working row (lab, 0.163.0). The command then queues with Tab, as measured.
+  test("a command while an answer streams with no working row: Tab queues it, never Enter", async () => {
+    const { pane, send } = codex();
+    streams(pane);
+    const answer = await send("/status", { mode: "command" });
+    expect(answer.receipt?.keys.at(-1)).toBe("Tab");
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.queued).toEqual(["/status"]);
+  });
+
+  test("a never-held command while an answer streams with no working row never runs: it stays in the box, unsent", async () => {
+    const { pane, send } = codex();
+    streams(pane);
+    const answer = await send("/new", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", keys: [] });
+    expect(pane.keysSeen).toEqual([]);
+    expect(pane.queued).toEqual([]);
+    expect(pane.box).toBe("/new");
+  });
+
+  test("the turn ends while the command is typed: the box is free, so Enter runs it, never Tab into the slash popup", async () => {
+    const { pane, send } = codex();
+    streams(pane);
+    pane.afterInput = (p, what) => {
+      if (what.includes("/status")) p.turn = false;
+    };
+    const answer = await send("/status", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(pane.keysSeen).not.toContain("Tab");
+    expect(pane.transcript).toContain("› /status");
+  });
+
   test("`!ls` is a shell command on Codex: Enter on an idle box; in a turn it is refused, never queued (keys.neverHeld)", async () => {
     // Lab, 2026-10-16: on an idle box Tab does nothing with `!ls` (Shell mode) and Enter runs it; in a
     // turn Tab would queue it, but a shell line acts on the machine as it is then, so the profile lists
