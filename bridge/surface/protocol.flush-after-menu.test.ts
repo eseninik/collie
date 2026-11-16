@@ -193,3 +193,15 @@ describe("a command right after a menu answer, while the released queue still pr
     expect(pane.submitted).toEqual(["/login"]);
   });
 });
+
+// Local: Claude and Codex take a phone message on the direct path (direct-send.ts, owner 2026-11-14).
+// The same moving screen must not stop it (review finding of the 1.28.5 port).
+describe("a phone message on the direct path right after a menu answer", () => {
+  test("Claude: sent while the released queue still prints, nothing refused", async () => {
+    const { pane, send, answerMenu } = rig();
+    await answerMenu();
+    const answer = await send("carry on from the phone", { fromPhone: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.submitted).toEqual(["carry on from the phone"]);
+  });
+});
