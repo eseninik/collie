@@ -1607,6 +1607,7 @@ export const en = {
   "connection.stale.messageTemplate": "{reason}. {detail}",
   "connection.session.title": "Sessions",
   "connection.session.aria": "Session: {name}. Switch session",
+  "connection.session.moveAria": "Move {name}",
   "connection.session.primary": "primary",
   "connection.session.unreachable": "unreachable",
   "connection.session.ariaIn": "In session: {name}",

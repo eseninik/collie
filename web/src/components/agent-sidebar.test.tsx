@@ -502,7 +502,7 @@ describe("ThreadSidebar: Launch section", () => {
     expect(screen.getByText("rumen-peek")).toBeInTheDocument();
   });
 
-  it("a pinned row's folder is shortened under home; an absent cwd reads \"here\"", () => {
+  it("a pinned row's folder is shortened under home; an absent cwd shows no suffix", () => {
     const top: Launcher = { command: "htop", label: "Top" };
     render(
       <ThreadSidebar
@@ -516,8 +516,8 @@ describe("ThreadSidebar: Launch section", () => {
     );
     // peek's cwd IS home, so it collapses to a bare "~" rather than the full path.
     expect(screen.getByText("~")).toBeInTheDocument();
-    // top declares no cwd — beside this pane, wherever it is.
-    expect(screen.getByText("here")).toBeInTheDocument();
+    // top declares no cwd — beside this pane, wherever it is — and reads as its bare label.
+    expect(screen.queryByText("here")).not.toBeInTheDocument();
   });
 
   it("a host that refuses writes disables every row and names the reason", () => {

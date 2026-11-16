@@ -138,6 +138,17 @@ describe("a Stop early in a turn on Claude Code 2.1.319 gives the prompt back to
     expect(r.protocol.returnedSource("main", "%1", "stop-ret-000001")).toBe(MESSAGE);
   });
 
+  test("a direct phone send is tracked the same way: the web hides its card, the receipts still say it came back", async () => {
+    const pane = new LabPane();
+    const r = rig(pane);
+    const sent = await r.protocol.handle({ id: "stop-ret-000004", text: MESSAGE, mode: "send", fromPhone: true }, r.target);
+    expect(sent.receipt?.outcome).toBe("sent");
+    r.clock.now += 7000;
+    const stopped = await r.stop.handle("stop-req-000004", "%1", "claude");
+    expect(stopped.kind === "receipt" && stopped.receipt).toMatchObject({ outcome: "stopped", returned: ["stop-ret-000004"] });
+    expect(r.protocol.queuedOf("main", "%1")).toEqual([{ requestId: "stop-ret-000004", text: MESSAGE, at: expect.any(Number), state: "returned" }]);
+  });
+
   test("a turn that ends with no Stop leaves no card: two idle polls over an empty box let the send go", async () => {
     const pane = new LabPane();
     const r = rig(pane);

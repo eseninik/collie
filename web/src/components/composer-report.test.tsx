@@ -100,7 +100,7 @@ describe("Composer: Report a problem (ADR 0123)", () => {
   it("three failed sends in a row float the card; Report opens the sheet with the streak's ids", async () => {
     const user = userEvent.setup();
     const ids = bridge([{ outcome: "refused", reason: "probe_failed" }, { outcome: "typed_not_submitted", reason: "mismatch" }, { outcome: "unknown", reason: "no_evidence" }]);
-    const { container } = renderComposer();
+    const { container } = renderComposer({ agent: "pi" });
     await sendTimes(user, 2, ids);
     expect(container.querySelector(CARD)).toBeNull();
     await sendTimes(user, 1, ids);
@@ -123,7 +123,7 @@ describe("Composer: Report a problem (ADR 0123)", () => {
       { outcome: "refused", reason: "not_free" },
       { outcome: "refused", reason: "not_free" },
     ]);
-    const { container } = renderComposer();
+    const { container } = renderComposer({ agent: "pi" });
     await sendTimes(user, 4, ids);
     expect(container.querySelector(CARD)).toBeNull();
     await sendTimes(user, 1, ids);

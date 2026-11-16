@@ -1,0 +1,2 @@
+{"timestamp": "2026-11-14T10:05:00.000Z", "type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec", "call_id": "call_empty_zero", "input": "text(await tools.exec_command({cmd:\"true\"}));"}}
+{"timestamp": "2026-11-14T10:05:00.000Z", "type": "response_item", "payload": {"type": "custom_tool_call_output", "call_id": "call_empty_zero", "output": [{"type": "input_text", "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"}, {"type": "input_text", "text": ""}, {"type": "input_text", "text": "exit_code=0"}]}}

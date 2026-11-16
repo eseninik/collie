@@ -103,6 +103,7 @@ export const ICON_KEYS = {
   "display-settings": { meaning: "display settings", area: "composer", lucide: "Settings2" },
   "done": { meaning: "done, finished", area: "settings", lucide: "Check" },
   "download": { meaning: "download", area: "settings", lucide: "Download" },
+  "drag-handle": { meaning: "the grip that drags a row into a new place", area: "crew", lucide: "GripVertical" },
   "edit": { meaning: "edit or rename", area: "sheets", lucide: "Pencil" },
   "editor-close": { meaning: "leave the full-screen editor", area: "composer", lucide: "Minimize2" },
   "editor-open": { meaning: "open the full-screen editor", area: "composer", lucide: "Maximize2" },

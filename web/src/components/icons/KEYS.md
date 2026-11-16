@@ -6,7 +6,7 @@ Every glyph the app draws is named by what it means. A theme's `glyphs` picks th
 them (ADR 0137). A family with no fitting glyph for a key draws the lucide one, shown as `(lucide)`.
 Phosphor's three sets share one map; the fill and duotone files add `-fill` and `-duotone`.
 
-326 keys.
+327 keys.
 
 Phosphor Fill draws these keys in the regular weight, so a cross stays a cross and an empty or
 not-started state stays empty: `action-check`, `action-x`, `answered`, `clear`, `close`, `confirm`, `copied`, `copy-failed`, `dismiss`, `done`, `mod-icon-check`, `mod-icon-x`, `mod-step-done`, `mod-step-failed`, `mod-step-todo`, `ok`, `plan-done`, `plan-pending`, `remove`, `selected`, `sent-ok`, `update-step-done`, `update-step-failed`, `update-step-skipped`, `voice-setup`, `zoom-out`.
@@ -328,6 +328,7 @@ not-started state stays empty: `action-check`, `action-x`, `answered`, `clear`, 
 
 | key | meaning | lucide | phosphor | iconoir |
 | --- | --- | --- | --- | --- |
+| `drag-handle` | the grip that drags a row into a new place | `GripVertical` | `dots-six-vertical` | `menu` |
 | `role-deputy` | this machine is the deputy | `Shield` | `shield` | `shield` |
 | `role-lead` | this machine leads the crew | `Crown` | `crown` | `crown` |
 | `session` | the multiplexer session | `Layers` | `stack` | `multi-window` |

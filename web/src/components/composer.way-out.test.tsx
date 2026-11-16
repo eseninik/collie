@@ -143,7 +143,7 @@ describe("the way out", () => {
   it("composer draft: the placeholder stays plain, a send is refused at the thumb with Add, Replace and Cancel, and the way out stays", async () => {
     server.use(...sendHandler((request) => sendAnswer(request.id, "refused", "draft_present", { offers: ["append", "replace", "cancel"], surface: wayOutCase("draft").surface })));
     const user = userEvent.setup();
-    const { onToggle } = mount("draft");
+    const { onToggle } = mount("draft", { agent: "pi" });
     await user.type(screen.getByPlaceholderText("Type a reply…"), "new words");
     await user.click(screen.getByRole("button", { name: "Send" }));
     const strip = await screen.findByTestId("send-offers");
@@ -173,7 +173,7 @@ describe("the way out", () => {
       ),
     );
     const user = userEvent.setup();
-    const { onToggle } = mount("unreadable");
+    const { onToggle } = mount("unreadable", { agent: "pi" });
     await user.type(screen.getByPlaceholderText("Type a reply…"), "carry on please");
     await user.click(screen.getByRole("button", { name: "Send" }));
     // The first tap typed nothing and says why at the thumb, with the second tap and the way out beside it.

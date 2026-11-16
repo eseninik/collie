@@ -47,6 +47,7 @@ import { mounted } from "@/lib/base-path";
 import { forgetAllDiffComments } from "@/lib/diff-comment-store";
 import { clearAllDrafts, clearDraft } from "@/lib/drafts";
 import { forgetAgain } from "@/lib/new-page";
+import { forgetSessionOrder } from "@/lib/session-order";
 import { forgetSlots } from "@/lib/slots";
 import { forgetNoPromptsConfirms } from "@/lib/no-prompts";
 import { forgetTroubleSignals } from "@/lib/report/once";
@@ -179,6 +180,13 @@ const BUILT_IN: readonly (readonly [string, WipeCleaner])[] = [
     "new-page",
     (context) => {
       if (context.reason !== "password") forgetAgain();
+    },
+  ],
+  [
+    // This device's order of the Sessions sheet (lib/session-order.ts): session names, per machine.
+    "session order",
+    (context) => {
+      if (context.reason !== "password") forgetSessionOrder();
     },
   ],
   [

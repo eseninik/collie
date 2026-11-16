@@ -271,7 +271,7 @@ describe("Composer — no action from cached state (M46 spec 11)", () => {
 
   it("waits while the terminal-draft notice holds the slot, then shows when it is dismissed", async () => {
     const user = userEvent.setup();
-    renderComposer({ terminalDraft: "typed on the host", rawTerminalDraft: "typed on the host" });
+    renderComposer({ agent: "pi", terminalDraft: "typed on the host", rawTerminalDraft: "typed on the host" });
     expect(screen.getByText(/draft in terminal/i)).toBeInTheDocument();
     await user.type(screen.getByPlaceholderText(/type a reply/i), "x");
     // One notice in the slot: the terminal draft wins.

@@ -23,6 +23,20 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **Codex has a short launcher with the owner's existing defaults.** Run `scripts/codex1` to retain the configured model, reasoning effort, ordinary tier and disabled fast modes while forwarding additional arguments.
+
+### Fixed
+
+- **Codex conversations stay readable with a wrapped status line.** Recognise Codex 0.169 screens on the phone, retain both status rows, and keep real dialogs blocking sends.
+
+- **Codex Chat shows images, command results and file changes.** Read recorded image bytes, process exits and patch diffs into the same cards as Claude, including straight-line Codex 0.169 Code Mode batches.
+
+- **Codex keeps failed tool runs visible when output is empty.** Keep the wrapper's recorded completion code on its original card without assigning it to a nested command.
+
+- **Codex replies send when a wrapped status repeats its separator.** Read the contiguous status rows as one input-frame edge, so a path continuation ending in another field does not hide the composer or block the Send button.
+
 ## [1.28.5] - 2026-11-16
 
 ### Fixed

@@ -119,7 +119,7 @@ async function moveToPane(page: Page, agent: Agent) {
 
 async function switchSession(page: Page, session: string) {
   await page.getByRole("button", { name: fill(en["connection.session.aria"], { name: "default" }) }).click();
-  await page.getByRole("dialog", { name: en["connection.session.title"] }).getByRole("button", { name: new RegExp(session, "u") }).click();
+  await page.getByRole("dialog", { name: en["connection.session.title"] }).getByRole("button", { name: new RegExp(`^${session}`, "u") }).click();
   await landed(page, `/?s=${session}`);
 }
 

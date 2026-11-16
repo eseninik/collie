@@ -36,7 +36,7 @@ or Firefox. The window's width is known everywhere.
 3. **The strip follows niri.** Each space keeps its own row of columns. A column has a width preset of
    1/2, 4/5 or Full of the strip, and columns never shrink to fit: the strip scrolls sideways and snaps
    to a column start, so it always begins with a whole column and only the right edge may cut one. A
-   new column starts at 1/2. The space header moves to the space above or below, in the sidebar's
+   new column starts at Full. The space header moves to the space above or below, in the sidebar's
    order, by its buttons or a vertical swipe, and lands on that space's remembered pane.
 4. **The route stays the truth.** The focused column is always the route's pane. A pane reached by a
    tap or a link that is not a column replaces the focused column; one that is a column takes the

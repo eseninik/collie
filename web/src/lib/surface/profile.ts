@@ -279,6 +279,11 @@ export interface CommandListRows {
    * wrapped draft joined. A profile names it only where a lab run showed that popup under the text. Optional.
    */
   readonly notForText?: string;
+  /**
+   * Under a text that matches `notForText`, Enter submits the text as typed and never takes a row of the
+   * popup under it (Claude Code's bash-mode path completion, lab 2026-11-09). Needs `notForText`. Optional.
+   */
+  readonly notForTextEnterTypes?: boolean;
 }
 
 /**
@@ -1245,10 +1250,13 @@ function commandList(value: JsonValue | undefined): CommandListRows {
   const withStaleOnly = node.staleWhenEmpty === true ? { ...withLeadOpens, staleWhenEmpty: true } : withLeadOpens;
   const withFill = node.pointerFill === true ? { ...withStaleOnly, pointerFill: true } : withStaleOnly;
   const withStale = node.inEdgeRun === true ? { ...withFill, inEdgeRun: true } : withFill;
+  if (node.notForTextEnterTypes !== undefined && node.notForTextEnterTypes !== true && node.notForTextEnterTypes !== false) fail(`${path}.notForTextEnterTypes`, "must be true or false");
+  if (node.notForTextEnterTypes === true && node.notForText === undefined) fail(`${path}.notForTextEnterTypes`, "needs notForText");
   if (node.notForText === undefined) return withStale;
   const notFor = pattern(node.notForText, `${path}.notForText`);
   if (notFor.test("")) fail(`${path}.notForText`, "must not match an empty text");
-  return { ...withStale, notForText: notFor.source };
+  const withNotFor = { ...withStale, notForText: notFor.source };
+  return node.notForTextEnterTypes === true ? { ...withNotFor, notForTextEnterTypes: true } : withNotFor;
 }
 
 /** `commandList.namespaces`: unique words with no space in them. */
