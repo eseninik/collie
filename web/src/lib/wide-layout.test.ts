@@ -170,16 +170,16 @@ describe("the focus rules", () => {
     expect(arrive(next, "c")).toBe(next);
   });
 
-  it("arriving on a pane that is not a column replaces the focused column and keeps its width", () => {
+  it("arriving on a pane that is not a column replaces the focused column, at Full", () => {
     const s: SpaceStrip = { cols: [{ key: "a", preset: "half" }, { key: "b", preset: "fourfifths" }], focus: "b" };
     const next = arrive(s, "x");
-    expect(next.cols).toEqual([{ key: "a", preset: "half" }, { key: "x", preset: "fourfifths" }]);
+    expect(next.cols).toEqual([{ key: "a", preset: "half" }, { key: "x", preset: "full" }]);
     expect(next.focus).toBe("x");
   });
 
-  it("arriving on an empty strip makes the pane the first column", () => {
+  it("arriving on an empty strip makes the pane the first column, at Full", () => {
     const next = arrive(EMPTY_STRIP, "a");
-    expect(next).toEqual({ cols: [{ key: "a", preset: "half" }], focus: "a" });
+    expect(next).toEqual({ cols: [{ key: "a", preset: "full" }], focus: "a" });
   });
 
   it("Open here replaces the focused column, and moves a pane that is a column elsewhere", () => {
@@ -189,11 +189,23 @@ describe("the focus rules", () => {
     expect(moved.focus).toBe("c");
   });
 
-  it("Open beside inserts right of the focus at 1/2 and focuses it", () => {
-    const s: SpaceStrip = { cols: [{ key: "a", preset: "full" }, { key: "b", preset: "full" }], focus: "a" };
+  it("Open here gives the pane Full, and an open column keeps the width it was given", () => {
+    const s: SpaceStrip = { cols: [{ key: "a", preset: "half" }, { key: "b", preset: "fourfifths" }], focus: "a" };
+    expect(openHere(s, "x").cols).toEqual([{ key: "x", preset: "full" }, { key: "b", preset: "fourfifths" }]);
+    expect(arrive(s, "b")).toEqual({ cols: s.cols, focus: "b" });
+  });
+
+  it("a dropped pane is Full, and a moved column keeps its width", () => {
+    const s: SpaceStrip = { cols: [{ key: "a", preset: "half" }, { key: "b", preset: "fourfifths" }], focus: "a" };
+    expect(insertAt(s, "x", 1).cols[1]).toEqual({ key: "x", preset: "full" });
+    expect(insertAt(s, "b", 0).cols[0]).toEqual({ key: "b", preset: "fourfifths" });
+  });
+
+  it("Open beside inserts right of the focus at Full and focuses it", () => {
+    const s: SpaceStrip = { cols: [{ key: "a", preset: "half" }, { key: "b", preset: "half" }], focus: "a" };
     const next = openBeside(s, "x");
     expect(keysOf(next)).toEqual(["a", "x", "b"]);
-    expect(next.cols[1]?.preset).toBe("half");
+    expect(next.cols[1]?.preset).toBe("full");
     expect(next.focus).toBe("x");
   });
 

@@ -34,7 +34,8 @@ afterEach(() => cleanup());
 
 const PROPS: ComponentProps<typeof Composer> = {
   paneId: "w1:p1",
-  agent: "claude",
+  // Muse retains upstream recovery controls; ordinary Claude/Codex phone sends are direct.
+  agent: "muse",
   isShell: false,
   gone: false,
   readOnly: false,

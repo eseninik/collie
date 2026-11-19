@@ -4177,3 +4177,24 @@ Privacy: the scratch folder reads `~/project`, and the stub model names itself `
 | --- | --- | --- |
 | `mcode--v077-idle-w200.txt` | The welcome panel (`v0.7.7 … ● Ready`), three tip rows, the what's-new box, the `Start · @ file or Plugin · / autocomplete` row, the composer between two rules with `›  Ask Mcode to do anything`, and the status row `~/project │ Auto │ ✦ stub-model · Thinking On │ Context 100K` | idle, composer found and empty |
 | `mcode--v077-turn-suggestion-w200.txt` | One finished turn: the prompt row, `└ • Ran  ls -la · 5 output lines`, the reply, `└ Completed in 1s · ⚡ 1667 tok/s`, then `Suggested next message · Tab accept` over a composer whose text is the grey suggestion — plain text cannot mark it grey, so the bridge reads a draft | draft |
+## Codex 0.169.0 phone conversation regression (captured 2026-11-14)
+
+Real captures from an empty `/tmp/collie-codex169-probe` folder, Codex 0.169.0 at low effort,
+inside a private `tmux -L collie-codex169` server. `capture-pane -p -e` preserves SGR bytes;
+the panes are 40 rows tall, with 120 or 80 columns as the filename records. No sanitizer or
+replacement changed the captured bytes. The prompts contain only disposable capture tasks.
+No arrow was sent to an idle composer; `/model` was typed only after a turn finished.
+
+| File | Keyboard state | Capture action |
+| --- | --- | --- |
+| `codex--v0169-idle--w120.txt` | idle, empty composer | Fresh session with its agents/shortcuts hint and warning |
+| `codex--v0169-idle-after-turn--w120.txt` | idle, empty composer | The disposable wait and queued reply finished |
+| `codex--v0169-idle-tip--w80.txt` | idle, empty composer | A resume tip remains above the composer, with a wrapped status row |
+| `codex--v0169-working--w120.txt` | running, empty composer | A disposable wait is still running |
+| `codex--v0169-working-queued--w120.txt` | running, empty composer | A wait is running with one queued input |
+| `codex--v0169-working-queued--w80.txt` | running, empty composer | The same queued input at 80 columns; the status path wraps to `probe` |
+| `codex--v0169-model-dialog--w120.txt` | dialog | `/model` shows the model picker after a completed turn |
+
+The Surface tests pin the keyboard state. The adapter tests also require the status continuation to
+remain in the status view and out of the draft. The phone tests use these same captures with the
+shared journal fixture, then exercise Enter and the image picker at 390 × 844.

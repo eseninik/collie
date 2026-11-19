@@ -1698,6 +1698,7 @@ export const de: Dictionary = {
   "connection.stale.messageTemplate": "{reason}. {detail}",
   "connection.session.title": "Spaces",
   "connection.session.aria": "Space: {name}. Space wechseln",
+  "connection.session.moveAria": "{name} verschieben",
   "connection.session.primary": "primär",
   "connection.session.unreachable": "nicht erreichbar",
   "connection.session.ariaIn": "In Space: {name}",

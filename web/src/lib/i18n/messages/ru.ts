@@ -1659,6 +1659,7 @@ export const ru: Dictionary = {
   "connection.stale.messageTemplate": "{reason}. {detail}",
   "connection.session.title": "Пространства",
   "connection.session.aria": "Пространство: {name}. Сменить пространство",
+  "connection.session.moveAria": "Переместить {name}",
   "connection.session.primary": "основной",
   "connection.session.unreachable": "недоступен",
   "connection.session.ariaIn": "В пространстве: {name}",

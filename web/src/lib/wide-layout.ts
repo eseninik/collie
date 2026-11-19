@@ -91,7 +91,7 @@ export type Preset = "half" | "fourfifths" | "full";
 export const PRESETS: readonly Preset[] = ["half", "fourfifths", "full"];
 
 /** A newly opened column's width. */
-export const NEW_COLUMN_PRESET: Preset = "half";
+export const NEW_COLUMN_PRESET: Preset = "full";
 
 export const PRESET_FRACTION = {
   half: 1 / 2,
@@ -220,7 +220,7 @@ export function arrive(strip: SpaceStrip, key: string): SpaceStrip {
     return { cols: [{ key, preset: NEW_COLUMN_PRESET }, ...strip.cols], focus: key };
   }
   return {
-    cols: strip.cols.map((c, i) => (i === at ? { key, preset: c.preset } : c)),
+    cols: strip.cols.map((c, i) => (i === at ? { key, preset: NEW_COLUMN_PRESET } : c)),
     focus: key,
   };
 }
@@ -229,9 +229,8 @@ export function arrive(strip: SpaceStrip, key: string): SpaceStrip {
 export function openHere(strip: SpaceStrip, key: string): SpaceStrip {
   const at = focusIndex(strip);
   if (at < 0 || strip.focus === key) return arrive(strip, key);
-  const preset = strip.cols[at]?.preset ?? NEW_COLUMN_PRESET;
   const cols = strip.cols
-    .map((c, i) => (i === at ? { key, preset } : c))
+    .map((c, i) => (i === at ? { key, preset: NEW_COLUMN_PRESET } : c))
     .filter((c, i) => i === at || c.key !== key);
   return { cols, focus: key };
 }

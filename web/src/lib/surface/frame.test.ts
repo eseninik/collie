@@ -6,6 +6,8 @@ import { parseAnsi, type AnsiSegment } from "../ansi";
 import { lineText, splitLines, type StyledLine } from "../blocks";
 import { cropRawColumns, type ColumnRange } from "../column-range";
 import { MAX_AUTOCOMPLETE_LINES } from "../harness/claude/autocomplete";
+import { detectEffortRegion } from "../harness/claude/effort";
+import { claudeAdapter } from "../harness/claude";
 import { displayWidth } from "../text-width";
 import { findInputFrame, frameAt, plainRows, type Frame, type FrameRow, type FrameRun } from "./frame";
 import { readAboveNotice } from "./notice";
@@ -20,8 +22,8 @@ import { requireProfile } from "./profile";
 //    over all 665 fixtures showed it gives the same top, prompt row and bottom as the old chrome.ts
 //    walk on every one, and the same draft wherever the old reader found a box (worklog, spec 03).
 //    Regenerate it only on purpose: COLLIE_REGEN_INPUT_FRAMES=1 bunx vitest run src/lib/surface/frame.test.ts
-//  - `prompt-binding-regions.json` pins the dialog region each detector binds to. No input frame may
-//    sit on or under a pinned dialog region: a dialog replaces the composer.
+//  - `prompt-binding-regions.json` pins the dialog region each detector binds to. A dialog keeps the
+//    composer unavailable. Only the two confirmed Effort captures below retain a drawn empty frame.
 
 const FIXTURES_DIR = join(import.meta.dirname, "..", "..", "fixtures");
 const PANES_DIR = join(FIXTURES_DIR, "panes");
@@ -121,9 +123,18 @@ function nonBlankIndex(texts: readonly string[]): number[] {
   return index;
 }
 
+// The raw 2.1.327 captures draw an empty box below a complete Effort dialog. The dialog still owns keys.
+const EFFORT_ABOVE_EMPTY_BOX = new Set([
+  "claude--v2327-effort-dialog.ansi.txt",
+  "claude--v2327-effort-dialog.txt",
+]);
+
 describe("pinned dialog regions", () => {
   for (const { fixture, region, bindColumns } of REGIONS) {
-    it(`pinned: no input frame sits on or under the ${fixture} dialog`, () => {
+    const title = EFFORT_ABOVE_EMPTY_BOX.has(fixture)
+      ? `pinned: the drawn empty frame below ${fixture} leaves the composer unavailable`
+      : `pinned: no input frame sits on or under the ${fixture} dialog`;
+    it(title, () => {
       const raw = readFileSync(join(PANES_DIR, fixture), "utf8");
       const read = bindColumns === undefined ? raw : cropRawColumns(raw, bindColumns);
       const rows = splitLines(parseAnsi(read));
@@ -141,6 +152,19 @@ describe("pinned dialog regions", () => {
       const firstRow = kept[start]!.row;
       for (const profile of [IDLE]) {
         const frame = findInputFrame(rows, profile);
+        if (EFFORT_ABOVE_EMPTY_BOX.has(fixture)) {
+          const effort = detectEffortRegion(rows);
+          expect(effort, "the complete Effort dialog is recognized").not.toBeNull();
+          expect(effort!.startLine).toBe(firstRow);
+          expect(effort!.model.title).toBe("Effort");
+          expect(effort!.model.signature.split("\n").map((line) => line.replace(/\s+$/, "")).filter((line) => line.length > 0)).toEqual(want);
+          expect(frame, "the raw capture still draws its empty frame").not.toBeNull();
+          expect(frame!.top).toBeGreaterThan(kept[start + want.length - 1]!.row);
+          expect(frame!.interior.text).toBe("");
+          expect(frame!.placeholder).toBe(false);
+          expect(claudeAdapter.composerReady?.(rows), "the drawn frame does not own the keyboard").toBe(false);
+          continue;
+        }
         // A notice the profile names sits ABOVE the live box by design (ADR 0109): its card owns no keyboard.
         if (frame !== null && readAboveNotice(texts, frame.top, profile.notices ?? [], profile.noticeGaps ?? [])?.first === firstRow) continue;
         if (frame !== null) expect(frame.bottom, "a frame found on a dialog sits wholly above it").toBeLessThan(firstRow);

@@ -1,0 +1,12 @@
+! sudo bash
+  /tmp/claude-1000/-home-admin-projects-ss-form/45649e85-9af7-4fcd-b8ab-dfb5bc6ee83a/scratchpad/drive-spike.sh
+  ctrl+q to send now
+
+✻ Unfurling… (43s · ↓ 3.2k tokens · thinking with medium effort)
+  ⎿  Tip: Use /btw to ask a quick side question without interrupting Claude's current work
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ Press up to edit queued messages
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  [Opus 5.5] ███░░░░░░░ 30% | git:(claude/unified-client-folder) | Weekly █░░░░░░░░░ 5% (6d 9h / Weekly)
+  ⏵⏵ bypass permissions on (shift+tab to cycle)

@@ -1823,6 +1823,7 @@ export const en = {
   "connection.stale.messageTemplate": "{reason}. {detail}",
   "connection.session.title": "Spaces",
   "connection.session.aria": "Space: {name}. Switch space",
+  "connection.session.moveAria": "Move {name}",
   "connection.session.primary": "primary",
   "connection.session.unreachable": "unreachable",
   "connection.session.ariaIn": "In space: {name}",

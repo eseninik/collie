@@ -1587,6 +1587,7 @@ export const tr: Dictionary = {
   "connection.stale.messageTemplate": "{reason}. {detail}",
   "connection.session.title": "Alanlar",
   "connection.session.aria": "Alan: {name}. Alanı değiştir",
+  "connection.session.moveAria": "{name} taşı",
   "connection.session.primary": "birincil",
   "connection.session.unreachable": "erişilemez",
   "connection.session.ariaIn": "Bulunulan alan: {name}",
