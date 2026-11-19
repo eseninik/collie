@@ -61,6 +61,8 @@ class SignInPane {
   box = "";
   submitted: string[] = [];
   keysSeen: string[] = [];
+  readsBeforeInput: number | undefined;
+  redraw: (screen: string, read: number) => string = (screen) => screen;
   private reads = 0;
   private closed = false;
   private lagLeft = 0;
@@ -96,10 +98,11 @@ class SignInPane {
   readGrid = (paneId: string, request: MuxGridRequest): Promise<MuxOutcome<MuxGrid>> => {
     void request;
     this.reads++;
-    return Promise.resolve(muxOk({ paneId, text: this.render(), truncated: false, revision: this.reads }));
+    return Promise.resolve(muxOk({ paneId, text: this.redraw(this.render(), this.reads), truncated: false, revision: this.reads }));
   };
 
   private take(text: string): void {
+    this.readsBeforeInput ??= this.reads;
     if (!this.closed) this.box += text;
   }
 
@@ -118,6 +121,7 @@ class SignInPane {
   writeKeys = (paneId: string, keys: readonly string[]): Promise<MuxAck> => {
     void paneId;
     for (const key of keys) {
+      this.readsBeforeInput ??= this.reads;
       this.keysSeen.push(key);
       if (this.closed) continue;
       if (key === "Backspace") this.box = [...this.box].slice(0, -1).join("");
@@ -192,6 +196,101 @@ const PI_OK = PI_BAD.split("\n")
   .filter((row) => !row.replace(SGR, "").includes("Error: Failed to login"))
   .join("\n");
 const PI_FIELD = /^> ?/u;
+
+// Oracle: Collie 1.29.0 review round 2, finding 1.
+describe("@req:R2-SECRET-STABILITY @oracle:requirement sign-in screen stability", () => {
+  const claude = (): SignInPane =>
+    new SignInPane({ fixture: "claude--v2325-login-url--w61.txt" }, CLAUDE_FIELD, claudeField, LOGIN_OK);
+
+  test("Claude accepts the code after the moved sign-in field settles", async () => {
+    const field = claude();
+    field.redraw = (screen, read) => read === 1 ? screen : `\n${screen}`;
+    const { send } = rig(field, "claude", "2.1.325");
+    const answer = await send(SHORT, { secret: true });
+    expect(answer.receipt?.outcome).toBe("sent");
+    expect(field.readsBeforeInput ?? 0).toBeGreaterThanOrEqual(4);
+    expect(answer.receipt?.gapsMs.settle).toBeGreaterThanOrEqual(150);
+    expect(field.submitted).toEqual([SHORT]);
+    expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+    expect(field.keysSeen.filter((key) => key === "Enter")).toHaveLength(1);
+  });
+
+  test("Claude accepts the code while the widest row above the sign-in frame redraws", async () => {
+    const field = claude();
+    // Change the length of one row immediately above the frame, keeping its position and frame width.
+    field.redraw = (screen, read) => {
+      if (field.submitted.length > 0) return screen;
+      const rows = screen.split("\n");
+      const above = rows.findIndex((row) => /^─{8,}$/u.test(row.replace(SGR, ""))) - 1;
+      if (above < 0) return screen;
+      rows[above] = `  Previous output ${"·".repeat(read === 1 ? 46 : 58)}`;
+      return rows.join("\n");
+    };
+    const { send } = rig(field, "claude", "2.1.325");
+    const answer = await send(SHORT, { secret: true });
+    expect(answer.receipt?.outcome).toBe("sent");
+    expect(field.readsBeforeInput ?? 0).toBeGreaterThanOrEqual(2);
+    expect(field.submitted).toEqual([SHORT]);
+    expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+    expect(field.keysSeen.filter((key) => key === "Enter")).toHaveLength(1);
+  });
+
+  for (const [harness, version, fixture, prompt] of [
+    ["muse", "1.4.10", "muse--idle-1410.txt", /^❯ +$/u],
+    ["grok", "1.0.77", "grok--done.txt", /^ {2}│ ❯/u],
+  ] as const) {
+    test(`${harness} retries after a resize and refuses to type a sign-in code in its ordinary box`, async () => {
+      // These profiles recognize their editor but declare no sign-in field.
+      const row = pane(fixture).split("\n").find((text) => prompt.test(text.replace(SGR, "")))!;
+      const field = new SignInPane({ fixture }, prompt, () => row, "");
+      const { send } = rig(field, harness, version);
+      const view = await send("", { mode: "prepare" });
+      expect(view.surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+      expect(view.surface?.field).toBeUndefined();
+
+      // The first read during the resize is only a fragment of the panel.
+      let seen = 0;
+      field.redraw = (screen) => ++seen === 1 ? "Resizing…" : screen;
+      const answer = await send(SHORT, { secret: true });
+      expect(answer.receipt?.gapsMs.settle).toBeGreaterThanOrEqual(150);
+      expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "no_secret_field", keys: [] });
+      expect(field.box).toBe("");
+      expect(field.keysSeen).toEqual([]);
+    });
+  }
+});
+
+// Oracle: Collie 1.29.0 review round 2, finding 4.
+test("@req:R2-REPLAY-OFFERS @oracle:requirement an effective sign-in send replays without offers", async () => {
+  const field = new SignInPane({ fixture: "claude--v2325-login-url--w61.txt" }, CLAUDE_FIELD, claudeField, LOGIN_OK);
+  const { send, store } = rig(field, "claude", "2.1.325");
+  const id = "req-effective-signin-0001";
+  const { record } = store.accept({
+    id,
+    session: "main",
+    paneId: "%1",
+    paneGeneration: "gen-1",
+    surfaceRevision: 1,
+    mode: "send",
+    text: SHORT,
+    secret: true,
+  });
+  // The first receipt could offer the terminal keys while the submit was unconfirmed.
+  const { reason: _crash, ...receipt } = SendProtocol.crashReceipt(record);
+  store.settle(id, { ...receipt, outcome: "unknown", reason: "no_evidence", keys: ["Enter"] }, ["keys"]);
+  const request = { id, secret: true };
+  const before = await send(SHORT, request);
+  expect(before).toMatchObject({ replayed: true, receipt: { outcome: "unknown" } });
+  expect(store.markEffective(id)).toBe("unknown");
+
+  const replay = await send(SHORT, request);
+  const afterRestart = await rig(field, "claude", "2.1.325").send(SHORT, request);
+  expect(replay).toMatchObject({ replayed: true, receipt: { outcome: "effective" }, offers: [] });
+  expect(afterRestart).toMatchObject({ replayed: true, receipt: { outcome: "effective" }, offers: [] });
+  expect(field.box).toBe("");
+  expect(field.submitted).toEqual([]);
+  expect(field.keysSeen).toEqual([]);
+});
 
 describe("Claude Code's sign-in field hides the code: the send is checked by its mask", () => {
   for (const [name, code] of [

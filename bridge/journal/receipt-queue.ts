@@ -10,8 +10,8 @@
 // and one prompt clears one of them.
 //
 // A harness whose journal DOES record its queue (`JournalAdapter.recordsQueue`, Claude Code and Muse)
-// keeps the journal as the source of the queued cards; the receipts add only cards that came back to the
-// box, which no journal records as a queue. That flag is an optimisation, not the guard: a receipt card
+// keeps the journal as the source of the queued cards; the receipts add sends that came back to the box.
+// Direct profiles also get unconfirmed text to keep it visible in Chat. A receipt card
 // whose folded text equals a text the journal lists as queued is never drawn, whatever the flag says,
 // so a message is never drawn twice even when an adapter starts recording its queue.
 //
@@ -26,6 +26,7 @@
 //
 // Pure: no clock, no disk, no harness name.
 
+import { foldQueueText } from "../../web/src/lib/queue-text.ts";
 import type { QueuedSendState, ReceiptQueued } from "../surface/queued.ts";
 import type { TranscriptEntry } from "./types.ts";
 
@@ -45,15 +46,10 @@ export interface QueuedSendWire {
   text: string;
 }
 
-/** A text as this rule compares it: every run of white space one space, the ends cut. */
-function folded(text: string): string {
-  return text.replace(/\s+/gu, " ").trim();
-}
-
 /** A turn's prompt text and journal time, or null when it is no prompt the operator wrote. */
 function promptOf(entry: TranscriptEntry): { text: string; at: number } | null {
   if (entry.role !== "user" || entry.abandoned === true) return null;
-  const text = folded(entry.parts.flatMap((part) => (part.kind === "text" ? [part.text] : [])).join("\n"));
+  const text = foldQueueText(entry.parts.flatMap((part) => (part.kind === "text" ? [part.text] : [])).join("\n"));
   const at = Date.parse(entry.ts);
   if (text === "" || Number.isNaN(at)) return null;
   return { text, at };
@@ -73,7 +69,7 @@ export function stillOpen(sends: readonly ReceiptQueued[], entries: readonly Tra
   const claimed = new Set<number>();
   const open: ReceiptQueued[] = [];
   for (const send of sends.toSorted((a, b) => a.at - b.at)) {
-    const text = folded(send.text);
+    const text = foldQueueText(send.text);
     const landed = prompts.findIndex((prompt, i) => !claimed.has(i) && prompt.text === text && prompt.at >= send.at - PROMPT_SKEW_MS);
     if (landed === -1) open.push(send);
     else claimed.add(landed);
@@ -82,19 +78,20 @@ export function stillOpen(sends: readonly ReceiptQueued[], entries: readonly Tra
 }
 
 /**
- * The window's receipt cards: the sends the journal does not show as a prompt yet, less every card whose
- * text the journal lists as queued, and, for a harness that records its queue, less every card that is
- * not back in the box.
+ * The window's receipt cards: open sends whose text the journal does not list as queued.
+ * A harness that records its queue gets returned sends and, for direct profiles, unconfirmed sends.
  */
 export function receiptQueue(
   sends: readonly ReceiptQueued[],
   entries: readonly TranscriptEntry[],
   recordsQueue: boolean,
   journalQueued: readonly string[],
+  includeUnconfirmed: boolean,
 ): QueuedSendWire[] {
-  const listed = new Set(journalQueued.map(folded));
+  const listed = new Set(journalQueued.map(foldQueueText));
   return stillOpen(sends, entries)
-    .filter((send) => (!recordsQueue || send.state === "returned") && !listed.has(folded(send.text)))
+    .filter((send) => !listed.has(foldQueueText(send.text))
+      && (!recordsQueue || send.state === "returned" || (includeUnconfirmed && send.state === "unconfirmed")))
     .map((send) => ({ requestId: send.requestId, state: send.state, text: send.text }));
 }
 
@@ -113,8 +110,8 @@ export function unnamedFill(
   unnamed: number,
 ): string[] {
   if (unnamed <= 0 || sends.length === 0) return [];
-  const listed = new Set(journalQueued.map(folded));
-  const waiting = stillOpen(sends, entries).filter((send) => send.state === "queued" && !listed.has(folded(send.text)));
+  const listed = new Set(journalQueued.map(foldQueueText));
+  const waiting = stillOpen(sends, entries).filter((send) => send.state === "queued" && !listed.has(foldQueueText(send.text)));
   if (waiting.length > unnamed) return [];
   return waiting.map((send) => send.text);
 }

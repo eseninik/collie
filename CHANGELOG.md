@@ -65,6 +65,18 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **Clock checks keep their work bounded on padded terminal rows.** Skip rows without a clock separator, match two separating spaces and leave remaining padding blank, avoiding repeated whitespace scans while preserving the same panel footer decision.
 
+- **Confirmed sends clear recovery actions when replayed.** A retry returns the effective receipt with no recovery actions, even if the original reply offered Keys.
+
+- **Direct phone sends explain the machine-wide queue limit.** When the bridge queue fills, Claude and Codex ask you to wait for a turn to end.
+
+- **A sign-in send retries once when its field moves.** The bridge checks two new reads before typing and ignores changing text outside the sign-in frame.
+
+- **Queued Claude and Codex messages survive a Chat reload.** Chat shows the journal queue in its message stream and reuses the matching local pending line while it is visible.
+
+- **Direct sends stay visible while the bridge holds them.** Chat shows queued Codex sends and returned or unconfirmed sends from bridge receipts as message lines.
+
+- **Queued messages stay single when the journal folds whitespace.** Chat matches a queued line to the local send even if the agent folds its line breaks.
+
 ## [1.29.0] - 2026-11-18
 
 ### Added

@@ -1116,6 +1116,28 @@ describe("what is queued, from the receipts", () => {
     expect(body!.queuedSends).toEqual([{ requestId: "req-back-00001", state: "returned", text: "popped back" }]);
   });
 
+  test("@req:FIX-DIRECT-RECEIPT-WIRE @oracle:requirement Claude gets unconfirmed receipt text until it becomes a prompt, while Muse keeps its journal policy", async () => {
+    const receipt = { requestId: "req-lost-00001", state: "unconfirmed", text: "check the pending work" } as const;
+    const held: ReceiptQueued[] = [{ ...receipt, at: AT }];
+    const fx = fakeJournal([askAt("p1", "List 120 fruits", AT - 10_000)]);
+    const claude: JournalAdapter = { ...fx.adapter, agent: "claude", recordsQueue: true };
+    const muse: JournalAdapter = { ...fx.adapter, agent: "muse", recordsQueue: true };
+    const live = windows(fx);
+
+    const first = await live.window(claude, ref(), { limit: 10 }, held);
+    expect(first!.queuedSends).toEqual([receipt]);
+    expect(first!.queued).toEqual([]);
+
+    const museBody = await windows(fx).window(muse, ref(), { limit: 10 }, held);
+    expect("queuedSends" in museBody!).toBe(false);
+
+    fx.append(askAt("p2", receipt.text, AT + 40_000));
+    fx.settle();
+    const next = await live.window(claude, ref(), { limit: 10, after: { gen: first!.gen, rev: first!.rev } }, held);
+    expect(next!.upserts.map((entry) => entry.uuid)).toContain("p2");
+    expect("queuedSends" in next!).toBe(false);
+  });
+
   // Claude Code while it compacts: the `enqueue` carries no content, so the reducer knows a message waits
   // and not which. The receipts know the words. The card is the journal's own (`queued`), the same one a
   // message queued during a normal turn gets, and no receipt card doubles it. No guess among several.

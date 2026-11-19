@@ -2804,6 +2804,14 @@
   "frame": null
  },
  {
+  "fixture": "claude--v2327-effort-dialog-default.ansi.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2327-effort-dialog-default.txt",
+  "frame": null
+ },
+ {
   "fixture": "claude--v2327-effort-dialog.ansi.txt",
   "frame": {
    "top": 34,

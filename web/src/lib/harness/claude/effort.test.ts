@@ -82,8 +82,13 @@ const V2291_FIXTURES = [
   "claude-lab--menu-effort-slider-v2291--w82.txt",
   "claude-lab--menu-effort-slider--w132.txt",
 ];
-// Owner item 9: the 2.1.327 captures extend the corpus; their new footer has its own test.
-const V2327_FIXTURES = ["claude--v2327-effort-dialog.ansi.txt", "claude--v2327-effort-dialog.txt"];
+// Claude 2.1.327 draws the same controls in the captures with and without a frame below the menu.
+const V2327_FIXTURES = [
+  "claude--v2327-effort-dialog.ansi.txt",
+  "claude--v2327-effort-dialog.txt",
+  "claude--v2327-effort-dialog-default.ansi.txt",
+  "claude--v2327-effort-dialog-default.txt",
+];
 // The scale the 2.1.291 screens printed: five levels, and no word of the toggle's hint.
 const SCALE_2291 = ["low", "medium", "high", "xhigh", "max"];
 

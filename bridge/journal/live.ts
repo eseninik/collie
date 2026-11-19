@@ -44,6 +44,7 @@ import { receiptQueue, unnamedFill, type QueuedSendWire, type ReceiptQueued } fr
 import type { AgentSessionRef, JournalAdapter, TranscriptEntry } from "./types.ts";
 import { LIVE_TURNS, MAX_PAGE_ROWS, pageStart } from "./turns.ts";
 import { redactText } from "../redact.ts";
+import { directSendProfile } from "../../web/src/lib/surface/profiles/direct-send.ts";
 import { clamp, redactEntry } from "./text.ts";
 
 /**
@@ -755,7 +756,10 @@ class LiveWindow {
       const unnamed = this.reducer?.unnamedQueued?.() ?? 0;
       const named = unnamedFill(receipts, this.rows.map((row) => row.entry), body.queued, unnamed);
       if (named.length > 0) body.queued = [...body.queued, ...named];
-      const cards = receiptQueue(receipts, this.rows.map((row) => row.entry), this.adapter.recordsQueue === true, body.queued);
+      const cards = receiptQueue(
+        receipts, this.rows.map((row) => row.entry), this.adapter.recordsQueue === true, body.queued,
+        directSendProfile(this.adapter.agent),
+      );
       if (cards.length > 0) body.queuedSends = cards;
     }
     // Over every row the window holds, not the `limit` sent: the point is the prompt the first paint

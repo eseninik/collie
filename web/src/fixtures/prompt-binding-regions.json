@@ -72,42 +72,42 @@
   {
     "fixture": "claude--menu-effort-slider--w120.txt",
     "detector": "menu",
-    "region": "   Effort\n\n                             Faster                                                 Smarter\n                             ────────────────────▲──────────────────────┆──────────────────\n                             low     medium     high     xhigh      max       ultracode\n                                                                          xhigh + workflows\n\n   ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel"
+    "region": "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n   Effort\n\n                             Faster                                                 Smarter\n                             ────────────────────▲──────────────────────┆──────────────────\n                             low     medium     high     xhigh      max       ultracode\n                                                                          xhigh + workflows\n\n   ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel"
   },
   {
     "fixture": "claude--menu-effort-slider--w132.txt",
     "detector": "menu",
-    "region": "   Effort\n\n                                   Faster                                                 Smarter\n                                   ──────────▲────────────────────────────────┆──────────────────\n                                   low     medium     high     xhigh      max       ultracode\n                                                                                xhigh + workflows\n\n   ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel"
+    "region": "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n   Effort\n\n                                   Faster                                                 Smarter\n                                   ──────────▲────────────────────────────────┆──────────────────\n                                   low     medium     high     xhigh      max       ultracode\n                                                                                xhigh + workflows\n\n   ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel"
   },
   {
     "fixture": "claude--menu-effort-slider--w60.txt",
     "detector": "menu",
-    "region": "   ─         ────┆                       ──\n   low    mediu     hig    xhigh     max      ultracod\n          m         h                         e\n                                          xhigh +\n                                          workflows\n\n   ←/→ to adjust · Enter to confirm · s for this session\n   only · Esc to cancel"
+    "region": "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n   Effort\n\n   Faste                                           Smarte\n   r                                               r\n   ─────────▲────────────────────────────────────────────\n   ─         ────┆                       ──\n   low    mediu     hig    xhigh     max      ultracod\n          m         h                         e\n                                          xhigh +\n                                          workflows\n\n   ←/→ to adjust · Enter to confirm · s for this session\n   only · Esc to cancel"
   },
   {
     "fixture": "claude--menu-effort-slider--w80.txt",
     "detector": "menu",
-    "region": "   Effort\n\n         Faster                                                 Smarter\n         ──────────▲────────────────────────────────┆──────────────────\n         low     medium     high     xhigh      max       ultracode\n                                                      xhigh + workflows\n\n   ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel"
+    "region": "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n   Effort\n\n         Faster                                                 Smarter\n         ──────────▲────────────────────────────────┆──────────────────\n         low     medium     high     xhigh      max       ultracode\n                                                      xhigh + workflows\n\n   ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel"
   },
   {
     "fixture": "claude--menu-effort-slider--w60-low.txt",
     "detector": "menu",
-    "region": "     ─────┆                              ──\n   low    mediu     hig    xhigh     max      ultracod\n          m         h                         e\n                                          xhigh + \n                                          workflows\n\n   ←/→ to adjust · Enter to confirm · s for this session \n   only · Esc to cancel"
+    "region": "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n   Effort\n\n   Faste                                           Smarte\n   r                                               r\n   ─▲────────────────────────────────────────────────────\n     ─────┆                              ──\n   low    mediu     hig    xhigh     max      ultracod\n          m         h                         e\n                                          xhigh + \n                                          workflows\n\n   ←/→ to adjust · Enter to confirm · s for this session \n   only · Esc to cancel"
   },
   {
     "fixture": "claude--menu-effort-slider--w80-low.txt",
     "detector": "menu",
-    "region": "   Effort\n\n         Faster                                                 Smarter\n         ─▲─────────────────────────────────────────┆──────────────────\n         low     medium     high     xhigh      max       ultracode\n                                                      xhigh + workflows\n\n   ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel"
+    "region": "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n   Effort\n\n         Faster                                                 Smarter\n         ─▲─────────────────────────────────────────┆──────────────────\n         low     medium     high     xhigh      max       ultracode\n                                                      xhigh + workflows\n\n   ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel"
   },
   {
     "fixture": "claude--menu-effort-slider--w80-ultracode.txt",
     "detector": "menu",
-    "region": "   Effort                                                                       \n                                                                                \n         Faster                                                 Smarter         \n         ───────────────────────────────────────────┆─────────▲────────         \n         low     medium     high     xhigh      max       ultracode             \n                                                      xhigh + workflows         \n                                                                                \n   ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel   "
+    "region": "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n   Effort                                                                       \n                                                                                \n         Faster                                                 Smarter         \n         ───────────────────────────────────────────┆─────────▲────────         \n         low     medium     high     xhigh      max       ultracode             \n                                                      xhigh + workflows         \n                                                                                \n   ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel   "
   },
   {
     "fixture": "claude--menu-effort-slider--w60-ultracode.txt",
     "detector": "menu",
-    "region": "   Effort                                                   \n                                                            \nFaster                                                 \n───────────────────────────────────────────┆─────────▲──────\nlow     medium     high     xhigh      max       ultracode  \n                                             xhigh +       \n                                                            \n   ←/→ to adjust · Enter to confirm · s for this session \nonly · Esc to cancel"
+    "region": "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n   Effort                                                   \n                                                            \nFaster                                                 \n───────────────────────────────────────────┆─────────▲──────\nlow     medium     high     xhigh      max       ultracode  \n                                             xhigh +       \n                                                            \n   ←/→ to adjust · Enter to confirm · s for this session \nonly · Esc to cancel"
   },
   {
     "fixture": "claude--menu-effort-slider--w40-ultracode.txt",
@@ -257,7 +257,7 @@
   {
     "fixture": "claude--v2283-slash-effort.txt",
     "detector": "menu",
-    "region": "   Effort\n                                           \n                             Faster                                                 Smarter\n                             ────────────────────▲──────────────────────┆──────────────────\n                             low     medium     high     xhigh      max       ultracode\n                                                                          xhigh + workflows\n  \n   ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel"
+    "region": "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ ● high · /effort ▔\n   Effort\n                                           \n                             Faster                                                 Smarter\n                             ────────────────────▲──────────────────────┆──────────────────\n                             low     medium     high     xhigh      max       ultracode\n                                                                          xhigh + workflows\n  \n   ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel"
   },
   {
     "fixture": "claude--v2283-slash-export.txt",
@@ -1579,5 +1579,15 @@
     "fixture": "claude--background-work-exit-3.txt",
     "detector": "menu",
     "region": "──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  Background work is running\n  The following will stop when you exit:\n\n  shell · sleep 600\n\n    1. Exit and stop tasks\n    2. Move to background and exit\n  ❯ 3. Stay\n\n  Enter to confirm · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2327-effort-dialog-default.ansi.txt",
+    "detector": "menu",
+    "region": "─────────────────────────────────────────────────────────────────────────────────────────────────\n  Effort\n\n                  Faster                             Smarter\n                  ──────────▲───────────────────────────────      Ultracode  off\n                  low     medium     high     xhigh      max      Tab to toggle\n\n                                The default effort for this model\n\n\n  ←/→ to adjust · s to use this session only · Enter to save · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2327-effort-dialog-default.txt",
+    "detector": "menu",
+    "region": "─────────────────────────────────────────────────────────────────────────────────────────────────\n  Effort\n\n                  Faster                             Smarter\n                  ──────────▲───────────────────────────────      Ultracode  off\n                  low     medium     high     xhigh      max      Tab to toggle\n\n                                The default effort for this model\n\n\n  ←/→ to adjust · s to use this session only · Enter to save · Esc to cancel"
   }
 ]

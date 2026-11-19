@@ -105,6 +105,16 @@
   }
  },
  "fixtures": {
+  "claude--v2327-effort-dialog-default.ansi.txt": {
+   "harness": "claude",
+   "version": "2.1.327",
+   "state": "dialog"
+  },
+  "claude--v2327-effort-dialog-default.txt": {
+   "harness": "claude",
+   "version": "2.1.327",
+   "state": "dialog"
+  },
   "claude--v2327-effort-dialog.ansi.txt": {
    "harness": "claude",
    "version": "2.1.327",

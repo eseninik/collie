@@ -4,7 +4,8 @@ import { createRef } from "react";
 import type { ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import type { ChatFeed } from "@/hooks/use-chat-window";
 import { EMPTY_CHAT_WINDOW, type ChatWindow } from "@/lib/chat-window";
-import { __resetPending, addPending, handOverPending, setPendingState } from "@/lib/durable-pending";
+import { __resetPending, addPending, handOverPending, PENDING_KEEP_MS, setPendingState } from "@/lib/durable-pending";
+import { en } from "@/lib/i18n/messages/en";
 import { SessionStream } from "./session-stream";
 
 // Oracle: finding 2 and its confirmed long-wait scenario. The independent author has not read the implementation.
@@ -84,5 +85,35 @@ describe("@req:FIX-QUEUED-LONG @oracle:requirement a queued send waiting more th
     view.rerender(stream("muse"));
     expect(screen.queryByText(WORDS)).toBeNull();
     expect(document.querySelector("[data-slot='stream-pending']")).toBeNull();
+  });
+});
+
+describe("@req:R2-DIRECT-QUEUE @oracle:requirement direct sends still in the agent queue", () => {
+  const agents = ["claude", "codex"] as const;
+  const queued: Partial<ChatWindow> = { queued: [WORDS], sendQueuedNow: ["ctrl+Enter"] };
+
+  function expectOneQueueLine() {
+    // getByText requires exactly one matching row.
+    expect(screen.getByText(WORDS)).toBeVisible();
+    expect(screen.queryByText(en["chat.stream.queued"])).toBeNull();
+    expect(document.querySelector("[data-slot='stream-queued'], [data-slot='stream-queued-receipts']")).toBeNull();
+    expect(screen.queryByRole("button", { name: en["chat.stream.sendNowAria"] })).toBeNull();
+  }
+
+  it.each(agents)("%s: shows one queue line after the local pending line expires", (agent) => {
+    const view = render(stream(agent));
+    sentAndQueued();
+    view.rerender(stream(agent, queued));
+    expect(screen.getByText(WORDS)).toBeVisible();
+
+    act(() => vi.advanceTimersByTime(PENDING_KEEP_MS + 1));
+    // A fresh journal poll still reports the same queued text.
+    view.rerender(stream(agent, { ...queued, entries: [], queued: [WORDS] }));
+    expectOneQueueLine();
+  });
+
+  it.each(agents)("%s: shows one queue line on opening the chat without a local pending line", (agent) => {
+    render(stream(agent, queued));
+    expectOneQueueLine();
   });
 });

@@ -16,11 +16,12 @@ import { ASKS_SHOWN, asksAt, shownAsks } from "@/lib/ask";
 import { finished, itemsOf, type ChatItem } from "@/lib/chat-items";
 import { useChatLook, type ChatLook } from "@/lib/chat-look";
 import type { ChatStatus } from "@/lib/chat-window";
-import { HANDOVER_KEEP_MS, dropPending, unmatched, usePending } from "@/lib/durable-pending";
+import { HANDOVER_KEEP_MS, dropPending, unmatched, usePending, type PendingLine } from "@/lib/durable-pending";
 import { clockTime } from "@/lib/format";
 import { t, type MessageKey } from "@/lib/i18n";
 import { holdsMask } from "@/lib/masked-text";
 import { blockOfPin, isPinnable, writingItemId } from "@/lib/message-pins";
+import { foldQueueText } from "@/lib/queue-text";
 import type { Ask, PinRow, QueuedSendRow } from "@/lib/types";
 import { AskCard, type AskCardProps } from "@/components/ask-card";
 import { recallScroll, rememberScroll } from "@/lib/scroll-memory";
@@ -104,6 +105,31 @@ function userRhythm(rhythm: ChatLook["rhythm"], index: number): string {
   return rhythm === "rule"
     ? "relative mt-3 before:pointer-events-none before:absolute before:inset-x-3 before:top-0 before:h-px before:bg-rule"
     : "mt-2";
+}
+
+type StreamPendingLine = Pick<PendingLine, "requestId" | "text" | "state"> & { at?: number };
+
+/** Bridge receipts match by request id. A journal queue entry has only text and replaces at most one echo. */
+function withBridgeQueue(
+  lines: readonly PendingLine[],
+  queued: readonly string[],
+  receipts: readonly QueuedSendRow[],
+): readonly StreamPendingLine[] {
+  if (queued.length === 0 && receipts.length === 0) return lines;
+  const remaining = new Map(lines.map((line) => [line.requestId, line]));
+  const receiptLines = receipts.map(({ requestId, text, state }): StreamPendingLine => {
+    const at = remaining.get(requestId)?.at;
+    remaining.delete(requestId);
+    return { requestId, text, state: state === "unconfirmed" ? "unconfirmed" : "sent", at };
+  });
+  const journalLines = queued.map((text, i): StreamPendingLine => {
+    const folded = foldQueueText(text);
+    const match = lines.find((line) => remaining.has(line.requestId) && line.state !== "notSent" && foldQueueText(line.text) === folded);
+    if (match === undefined) return { requestId: `journal-queue:${String(i)}`, text, state: "sent" };
+    remaining.delete(match.requestId);
+    return match;
+  });
+  return [...journalLines, ...receiptLines, ...remaining.values()];
 }
 
 /**
@@ -646,7 +672,7 @@ export function SessionStream({
   // THE PERSON'S OWN LINES THE PROGRAM HAS NOT WRITTEN BACK YET (lib/durable-pending.ts). Only a durable pane's composer
   // puts any, so every other pane has none and draws nothing here. A line goes when an item of the program's matches it.
   const pending = usePending(address);
-  // Only a visible queue card replaces a pending line. Direct profiles keep that line in the stream.
+  // Only a visible queue card hands a pending line over. Direct profiles draw the queue in the stream.
   const queuedTexts = useMemo(
     () => (window.status.kind === "live" && !direct ? [...window.queued, ...window.queuedSends.map((row) => row.text)] : []),
     [window.status.kind, window.queued, window.queuedSends, direct],
@@ -830,8 +856,9 @@ export function SessionStream({
   // journal cannot be read has no thread to put it in. Under it, from the same frame, the working row's room: empty
   // until the pane works, then "Still working" in the same box, so neither the line's arrival from the log nor the
   // turn's start moves the tail. The room stays until the answer has landed and the turn has ended.
-  const drawnLines = lines.filter((line) => line.seen === undefined || reading);
-  const composerLines = drawnLines.filter((line) => line.seen !== undefined && line.handover !== true).length;
+  const pendingLines = lines.filter((line) => line.seen === undefined || reading);
+  const drawnLines = direct && status.kind === "live" ? withBridgeQueue(pendingLines, window.queued, window.queuedSends) : pendingLines;
+  const composerLines = pendingLines.filter((line) => line.seen !== undefined && line.handover !== true).length;
   const [roomHeld, setRoomHeld] = useState(false);
   if (composerLines > 0 && !roomHeld) setRoomHeld(true);
   if (roomHeld && composerLines === 0 && !working && newest?.kind !== "user") setRoomHeld(false);
@@ -968,8 +995,8 @@ export function SessionStream({
         </>
       )}
 
-      {/* THE LINES THE PERSON SENT THAT THE PROGRAM HAS NOT WRITTEN BACK (durable panes only), after the program's own
-          items and before the working row. Each is replaced in place by the program's item (lib/durable-pending.ts). */}
+      {/* The person's lines before the program has written them back, including the direct-send queue.
+          They sit after the program's items and before the working row. */}
       {drawnLines.map((line, i) => (
         <div key={line.requestId} data-slot="stream-pending" className={cn(NEAR_BLOCK, userRhythm(look.rhythm, blocks.length + i))}>
           <PendingTurn text={line.text} state={line.state} at={line.at} />

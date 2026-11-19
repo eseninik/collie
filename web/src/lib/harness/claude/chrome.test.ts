@@ -1250,6 +1250,9 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     // and the blank at row 33. The plain capture also ends with a newline; the ANSI capture does not.
     { fixture: "v2327-effort-dialog.ansi", statusRows: 2, draft: null, stripped: 6 },
     { fixture: "v2327-effort-dialog", statusRows: 2, draft: null, stripped: 7 },
+    // The manual-mode footer is the tail. Only the plain read has a final newline to trim.
+    { fixture: "v2327-effort-dialog-default.ansi", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "v2327-effort-dialog-default", statusRows: 0, draft: null, stripped: 1 },
     { fixture: "v21314-core-permission--w120", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "v21314-core-permission--w60", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "v21314-core-slash-list--w120", statusRows: 0, draft: "/", stripped: 24 },

@@ -3589,9 +3589,9 @@ export class SendProtocol {
       // A command's draft refusal offers no Add on a replay either: the same rule, read from the same request.
       const match = await this.deps.profile(target.harness, target.paneId);
       const command = stored.reason === "draft_present" && draftCommand(request, match);
-      // New receipts replay the actions decided on their original screen, including sign-in fields.
-      // Older records have no saved actions and keep their compatibility rule.
-      const offers = record.offers ?? (directSend(match, request) && stored.cap === undefined ? [] : offersFor(stored.outcome, stored.reason, stored.profileId !== null, command));
+      // A later confirmation closes the recovery actions, including on records saved before it.
+      // Other receipts replay the actions decided on their original screen, when saved.
+      const offers = stored.outcome === "effective" ? [] : record.offers ?? (directSend(match, request) && stored.cap === undefined ? [] : offersFor(stored.outcome, stored.reason, stored.profileId !== null, command));
       const replay: SendAnswer = { receipt: stored, offers, replayed: true };
       // A send a crash cut short: read the pane now and report it beside the stored receipt. One cut
       // short after its first key (`interrupted`, M102 spec 16) also carries the rows now: text may be in the box.
@@ -3777,7 +3777,8 @@ export class SendProtocol {
       return this.settle(state, new Ended("refused", "busy", { detail }));
     }
     if (holds.waitingCount() >= HOLD_BRIDGE_MAX) {
-      return this.settle(state, new Ended("refused", "busy", { detail: `Collie already holds ${String(HOLD_BRIDGE_MAX)} messages on this machine. Cancel one, or wait for a turn to end.` }));
+      const action = directPhoneSend(state) ? "Wait for a turn to end." : "Cancel one, or wait for a turn to end.";
+      return this.settle(state, new Ended("refused", "busy", { detail: `Collie already holds ${String(HOLD_BRIDGE_MAX)} messages on this machine. ${action}` }));
     }
     // A pane's first held request starts its watch afresh (2026-10-26, live check W3): a watch outlives
     // the requests it watched (a release that went out, a cancel), and one left from a release kept the
@@ -5489,7 +5490,9 @@ export class SendProtocol {
     // A sign-in code goes only into the sign-in field the reader knows (2026-11-17, second review): with
     // none on the screen (it closed, or the read is stale) the code would land in the agent's box and reach
     // the model. Refused before any key; its record keeps no line (the accept took none for a secret).
-    if (state.request.secret === true && state.secretField !== true) throw new Ended("refused", "no_secret_field", { surface: s0.surface, detail: NO_SECRET_FIELD });
+    if (isSecretSend(state) && s0.frame?.secret === undefined && s0.surface.field !== "secret") {
+      throw new Ended("refused", "no_secret_field", { surface: s0.surface, detail: NO_SECRET_FIELD });
+    }
     // A box whose line break submits it takes one line: a second line would go out as a second message.
     if (s0.frame?.newlineSubmits === true && sendLines(state.request.text).length > 1) {
       throw new Ended("refused", "multiline", { surface: s0.surface, detail: NEWLINE_SUBMITS });
@@ -6380,21 +6383,21 @@ export class SendProtocol {
       const win = bottomWindow(snap.plain);
       return snap.plain.slice(win.first, win.end).join("\n");
     };
-    // A sign-in field must also stay in the same position. Matching border text alone is not enough.
-    const secretMoved = isSecretSend(state) && (gridSizeOf(first) !== gridSizeOf(second) || first.frame?.top !== second.frame?.top || first.frame?.bottom !== second.frame?.bottom);
+    // A sign-in field must also stay in place. Its own edges supply the width; volatile rows do not.
+    const secretMoved = isSecretSend(state) && (first.frame?.top !== second.frame?.top || first.frame?.bottom !== second.frame?.bottom);
     if (secretMoved || (first.frame === null) !== (second.frame === null) || key(first) !== key(second)) {
       const moved = new Ended("refused", "not_free", { surface: second.surface, detail: "The input box moved between two reads." });
-      if (!isSecretSend(state) && inFlux(first, second)) moved.extra.inFlux = true;
+      if (secretMoved || inFlux(first, second)) moved.extra.inFlux = true;
       throw moved;
     }
     return second;
   }
 
   /**
-   * Ordinary direct sends read once; sign-in fields still need two stable reads. Other sends retry S0
-   * once when the geometry is in flux (2026-10-26):
+   * Ordinary direct sends read once; sign-in fields still need two stable reads. S0 retries once
+   * when the geometry is in flux (2026-10-26):
    * the two reads differ in grid size (a resize landed between them), or the read is torn (cut inside the
-   * box). Such a read is a frame on its way, not a box that is not free, so it is no reason yet to hold
+   * box), or the sign-in frame moved. The frame can still settle, so this is no reason yet to hold
    * the send or refuse it `not_free`. After {@link SETTLE_MS} S0 reads again, once, and that read is
    * judged by every rule as before. It runs before any key; the read in flux and the pause are
    * `gapsMs.settle`, so `s0` stays the time of the reads that were judged.

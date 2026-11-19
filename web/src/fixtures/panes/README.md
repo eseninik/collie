@@ -16,6 +16,15 @@ scripts/capture-fixture.sh <paneId> <name> [lines]   # paneIds: /api/snapshot
 (`less -R <file>`) for private content before `git add` — prefer generating states in a sandbox
 pane over capturing real work sessions.
 
+## Claude Code 2.1.327 Effort in manual permission mode
+
+`claude--v2327-effort-dialog-default.txt` and its ANSI twin are unedited visible reads from
+two disposable Herdr 0.9.3 workspaces at 97 columns. Claude ran with `--permission-mode manual`.
+The idle screen reported `manual mode on`. After `/effort`, the footer is the last visible row
+and the input frame is absent. The ANSI capture used `TERM=xterm-256color`, `COLORTERM=truecolor`
+and `FORCE_COLOR=3`. It keeps Herdr's SGR codes and CRLF. The two reads pin the Effort card, the
+guarded key taps and refusal to type a regular message while the menu is open.
+
 ## OmO 5.1.30 corpus (captured 2026-10-12, Herdr 0.9.3)
 
 `pi--omo-v5130-*.txt` comes from a disposable 113-column Herdr pane running OmO

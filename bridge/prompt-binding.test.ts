@@ -196,14 +196,13 @@ const REGIONS = JSON.parse(
   readFileSync(join(import.meta.dir, "..", "web", "src", "fixtures", "prompt-binding-regions.json"), "utf8"),
 ) as BindingRegion[];
 
-/** Fixtures that show ONE dialog and so legitimately share a region: the `-named-` captures of Claude
- *  Code 2.1.296 beside their unnamed twins, the wizard review step at both widths, and the `/effort`
- *  slider on `high` at 120 columns captured twice. That last pair differed only in the label spliced
- *  into the `▔` edge, which the menu's region leaves out since 1.22.5 (Claude puts timed notices
- *  there). */
+/** Fixtures that share the same bound region: the `-named-` captures of Claude Code 2.1.296
+ *  beside their unnamed twins, the wizard review step at both widths, and plain and styled reads
+ *  of the same screen. The two older high-effort captures at 120 columns are checked against each
+ *  other: their `▔` edges differ and the effort detector binds that edge. */
 const SAME_DIALOG: string[][] = [
   ["claude--v2327-effort-dialog.ansi.txt", "claude--v2327-effort-dialog.txt"],
-  ["claude--menu-effort-slider--w120.txt", "claude--v2283-slash-effort.txt"],
+  ["claude--v2327-effort-dialog-default.ansi.txt", "claude--v2327-effort-dialog-default.txt"],
   ["claude-lab--ask-multi-named-v2296--w82.txt", "claude-lab--ask-multi-v2296--w82.txt"],
   ["claude-lab--ask-multi-named-v2296--w40.txt", "claude-lab--ask-multi-v2296--w40.txt"],
   ["claude-lab--ask-single-named-v2296--w40.txt", "claude-lab--ask-single-v2296--w40.txt"],
@@ -239,6 +238,8 @@ describe("client/bridge binding contract", () => {
     });
   }
 
+  // Every pair in the corpus is compared. The full Bun run measured 5–6 s on the stand,
+  // above Bun's default 5 s, before adding the non-bypass Effort captures.
   test("a region from a different dialog is never accepted", () => {
     const rawCache = new Map<string, string>();
     const rawOf = (fixture: string): string => {
@@ -285,7 +286,7 @@ describe("client/bridge binding contract", () => {
     // above is dead code and this line says so.
     expect(identicalPairs).toBeGreaterThan(0);
     expect(sameDialogPairs).toBeGreaterThan(0);
-  });
+  }, 15_000);
 });
 
 // Claude Code 2.1.299 draws its task checklist under a dialog's footer, and a list of five rows or

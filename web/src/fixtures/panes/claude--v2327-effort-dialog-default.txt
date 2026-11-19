@@ -1,0 +1,18 @@
+ ▐▛███▛█   Claude Code v2.1.327
+▝▜██████▀  Opus 5.5 · Claude Ultra
+ ▝▝   ▝▝   ~/.ct/r2-effort-zaubtuiy/pane
+
+
+❯ /effort
+
+─────────────────────────────────────────────────────────────────────────────────────────────────
+  Effort
+
+                  Faster                             Smarter
+                  ──────────▲───────────────────────────────      Ultracode  off
+                  low     medium     high     xhigh      max      Tab to toggle
+
+                                The default effort for this model
+
+
+  ←/→ to adjust · s to use this session only · Enter to save · Esc to cancel

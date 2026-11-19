@@ -84,11 +84,11 @@ function detectRegion(input: StyledLine[]): FoundRegion | null {
   // just before the generic menu too.
   const marketplaces = detectMarketplaces(lines);
   if (marketplaces) return { detector: "menu", region: marketplaces.signature };
-  // Keep the established generic regions; the effort reader adds layouts they do not reach.
-  const menu = detectMenu(lines);
-  if (menu) return { detector: "menu", region: menu.signature };
+  // The app checks the effort dialog before the generic menu can claim it.
   const effort = detectEffort(lines);
   if (effort) return { detector: "menu", region: effort.signature };
+  const menu = detectMenu(lines);
+  if (menu) return { detector: "menu", region: menu.signature };
   // A notice above the live box (ADR 0109) lifts as a menu too, after every grammar above declined.
   const notice = detectAbovePromptNotice(lines);
   if (notice) return { detector: "menu", region: notice.model.signature };
@@ -118,7 +118,7 @@ function adapterRegion(lines: StyledLine[], agent: string): FoundRegion | null {
  */
 const ADAPTER_PINNED: ReadonlySet<string> = new Set(["kiro"]);
 
-describe("client/bridge binding contract", () => {
+describe("@req:R2-REGION-ORDER @oracle:requirement client/bridge binding contract", () => {
   it("covers every dialog detector", () => {
     expect([...new Set(REGIONS.map((r) => r.detector))].toSorted()).toEqual([
       "menu",
