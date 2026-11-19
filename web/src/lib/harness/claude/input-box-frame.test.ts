@@ -237,6 +237,9 @@ describe("parity with the old walk on the real corpus", () => {
     "claude--v2323-rc-on-idle-usage--w100.txt",
     "claude--v2323-rc-on-running--w100.txt",
     "claude--v2323-rc-on-slash-list--w100.txt",
+    // A complete Effort modal still owns keys, but these raw 2.1.327 captures also draw an empty frame.
+    "claude--v2327-effort-dialog.ansi.txt",
+    "claude--v2327-effort-dialog.txt",
     "claude--working-esc-to-interrupt.txt",
     "claude--working.txt",
     // Claude Code 2.1.325 `/login` (2026-11-15): the sign-in field is a box of its own layout

@@ -105,6 +105,16 @@
   }
  },
  "fixtures": {
+  "claude--v2327-effort-dialog.ansi.txt": {
+   "harness": "claude",
+   "version": "2.1.327",
+   "state": "dialog"
+  },
+  "claude--v2327-effort-dialog.txt": {
+   "harness": "claude",
+   "version": "2.1.327",
+   "state": "dialog"
+  },
   "agy--ask-multi.txt": {
    "harness": "agy",
    "version": "1.3.5",
@@ -2523,6 +2533,41 @@
   "codex--v0167-working--w120.txt": {
    "harness": "codex",
    "version": "0.167.0",
+   "state": "running"
+  },
+  "codex--v0169-idle--w120.txt": {
+   "harness": "codex",
+   "version": "0.169.0",
+   "state": "idle"
+  },
+  "codex--v0169-idle-after-turn--w120.txt": {
+   "harness": "codex",
+   "version": "0.169.0",
+   "state": "idle"
+  },
+  "codex--v0169-idle-tip--w80.txt": {
+   "harness": "codex",
+   "version": "0.169.0",
+   "state": "idle"
+  },
+  "codex--v0169-model-dialog--w120.txt": {
+   "harness": "codex",
+   "version": "0.169.0",
+   "state": "dialog"
+  },
+  "codex--v0169-working--w120.txt": {
+   "harness": "codex",
+   "version": "0.169.0",
+   "state": "running"
+  },
+  "codex--v0169-working-queued--w120.txt": {
+   "harness": "codex",
+   "version": "0.169.0",
+   "state": "running"
+  },
+  "codex--v0169-working-queued--w80.txt": {
+   "harness": "codex",
+   "version": "0.169.0",
    "state": "running"
   },
   "codex--working.txt": {

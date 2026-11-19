@@ -111,7 +111,7 @@ export function claudeBuildBlocks(input: StyledLine[]): Block[] {
     const before = trimTrailingBlank(lines.slice(0, effortRegion.startLine));
     const blocks: Block[] = [];
     if (before.length > 0) blocks.push({ kind: "raw", lines: before });
-    blocks.push({ kind: "menu", menu: effortRegion.model, lines: lines.slice(effortRegion.startLine) });
+    blocks.push({ kind: "menu", menu: effortRegion.model, lines: stripChrome(lines).slice(effortRegion.startLine) });
     return blocks;
   }
 
@@ -329,9 +329,12 @@ export const claudeAdapter: HarnessAdapter = {
   extractStatusLines,
   extractAgentsFooter,
   extractInputDraft,
-  // The reply path's pre-flight: Claude's input box is exactly what `hasInputBox` finds, and its
-  // absence is exactly the condition under which typing lands in a modal instead (#34's shape).
-  composerReady: (lines) => hasInputBox(dropClosingRule(dropTaskChecklist(lines))),
+  // The reply path's pre-flight: an input frame under the 2.1.327 Effort modal does not own the
+  // keyboard. Other screens keep the existing input-box check (#34's shape).
+  composerReady: (lines) => {
+    const prepared = dropClosingRule(dropTaskChecklist(lines));
+    return detectEffortRegion(prepared) === null && hasInputBox(prepared);
+  },
   // The way OUT of a Claude modal, for the unread-dialog card (.adr/0053). Every Claude footer that
   // names one names `Esc to cancel` — the `/model` picker, the rewind screen, the config screens and
   // the `/effort` slider all print it, and `claude/markers.ts` treats the phrase as background chrome

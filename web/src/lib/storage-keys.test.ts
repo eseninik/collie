@@ -55,6 +55,7 @@ const KEYS = new Map<string, KeyFate>([
   // Decision ids of trick proposals closed with "Not now" in their session (lib/hill/session-later.ts, 2026-11-17): they name this pairing's bridge decisions, so they go with it.
   ["collie:session-later", { area: "local", prefix: false, fate: "wiped", why: "decision ids of this pairing's trick proposals, closed in their session" }],
   ["collie:slot:v1:", { area: "local", prefix: true, fate: "wiped", why: "the last pane address and workspace name of each browser tile" }],
+  ["collie:session-order:v1", { area: "local", prefix: false, fate: "wiped", why: "the names of this device's sessions, in the operator's order" }],
   // Written first by the wipe and removed last; present only while a wipe is unfinished (lib/wipe.ts).
   ["collie:wipe-pending", { area: "local", prefix: false, fate: "wiped", why: "a wipe's resume mark" }],
   // ── Kept: how this phone likes to look and behave, never what a session said ──

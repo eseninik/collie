@@ -1,5 +1,20 @@
 [
   {
+    "fixture": "claude--menu-effort-slider--w40.txt",
+    "detector": "menu",
+    "region": "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n   Effort\n\n   Fast                         Smart\n   er                           er\n   ─────▲────────────────────────────\n   ───── ──────────────┆   ────────\n   lo  medi  hig  xhi   ma    ultra\n   w   um    h    gh    x     code\n\n                          xhigh +\n                          workflows\n\n   ←/→ to adjust · Enter to confirm ·\n   s for this session only · Esc to\n   cancel"
+  },
+  {
+    "fixture": "claude--v2327-effort-dialog.ansi.txt",
+    "detector": "menu",
+    "region": "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  Effort\n\n                             Faster                             Smarter\n                             ──────────▲───────────────────────────────      Ultracode  off\n                             low     medium     high     xhigh      max      Tab to toggle\n  \n                                            The default effort for this model\n\n\n  ←/→ to adjust · s to use this session only · Enter to save · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2327-effort-dialog.txt",
+    "detector": "menu",
+    "region": "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  Effort\n\n                             Faster                             Smarter\n                             ──────────▲───────────────────────────────      Ultracode  off\n                             low     medium     high     xhigh      max      Tab to toggle\n\n                                            The default effort for this model\n\n\n  ←/→ to adjust · s to use this session only · Enter to save · Esc to cancel"
+  },
+  {
     "fixture": "agy--ask-multi.txt",
     "detector": "menu",
     "region": "───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\nQuestion 1/1: Which fruits do you like?\n\n> 1. [ ] apple\n  2. [ ] banana\n  3. [ ] cherry\n  4. Write-in...\n\n  ↑/↓ Navigate · space Toggle · enter Submit · esc Skip\nesc to cancel                                                                                   Gemini 3.8 Flash · high"

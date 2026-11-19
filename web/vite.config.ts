@@ -277,7 +277,11 @@ export default defineConfig({
       return hostType === "html" ? undefined : { relative: true };
     },
   },
-  define: { __BUILD_INFO__: JSON.stringify(BUILD_INFO) },
+  define: {
+    __BUILD_INFO__: JSON.stringify(BUILD_INFO),
+    // The local production build keeps the owner's existing physical-keyboard behavior.
+    "import.meta.env.VITE_COLLIE_ENTER_SENDS_DEFAULT": JSON.stringify("on"),
+  },
   plugins: [
     react(),
     glyphSetsPlugin(import.meta.dirname),

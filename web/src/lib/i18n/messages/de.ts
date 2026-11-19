@@ -201,7 +201,7 @@ export const de: Dictionary = {
     "Automatisch zeigt die Seitenleiste und Pane-Spalten auf einem Bildschirm an, der mindestens 600 px breit und 480 px hoch ist. Aus behält das Telefon-Layout überall bei.",
   "settings.enterSends.title": "Enter sendet",
   "settings.enterSends.hint":
-    "Mit einer physischen Tastatur sendet Enter die Nachricht und Umschalt+Enter fügt eine neue Zeile ein. Mit der Bildschirmtastatur fügt Enter immer eine neue Zeile ein.",
+    "Mit einer physischen Tastatur sendet Enter die Nachricht und Umschalt+Enter fügt eine neue Zeile ein. Normale Nachrichten an Claude und Codex lassen sich mit Enter auf beiden Tastaturen senden, auch wenn diese Einstellung aus ist.",
   "settings.paneNav.title": "Pane-Navigation",
   "settings.paneNav.twoFingers": "Zwei Finger",
   "settings.paneNav.joystick": "Joystick",
@@ -1704,6 +1704,7 @@ export const de: Dictionary = {
   "connection.stale.messageTemplate": "{reason}. {detail}",
   "connection.session.title": "Spaces",
   "connection.session.aria": "Space: {name}. Space wechseln",
+  "connection.session.moveAria": "{name} verschieben",
   "connection.session.primary": "primär",
   "connection.session.unreachable": "nicht erreichbar",
   "connection.session.ariaIn": "In Space: {name}",

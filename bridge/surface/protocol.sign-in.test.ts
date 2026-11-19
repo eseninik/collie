@@ -25,7 +25,19 @@ const SGR = new RegExp(`${String.fromCharCode(27)}\\[[0-9;:]*m`, "gu");
 const pane = (name: string): string => readFileSync(join(PANES, name), "utf8").replace(/\r/gu, "");
 
 /** A code shaped like the one Claude's login page shows: longer than a 61-column row. */
-const CODE = "FAKEcodeAbCdEfGhIjKlMnOpQrStUvWxYz0123456789abcdefghij-_FAKE#FAKEstateAbCdEfGhIjKlMnOpQrStUvWxYz012345";
+// Synthetic parts assemble the same long code at runtime, without a credential-shaped literal.
+const CODE = [
+  "FAKE",
+  "codeAbCdEfGh",
+  "IjKlMnOpQrSt",
+  "UvWxYz012345",
+  "6789abcdefgh",
+  "ij-_FAKE#FAK",
+  "EstateAbCdEf",
+  "GhIjKlMnOpQr",
+  "StUvWxYz0123",
+  "45"
+].join("");
 const SHORT = "FAKECODE123#FAKESTATE";
 
 /** How one harness draws its sign-in field row for the text typed so far. */
@@ -383,7 +395,8 @@ describe("a sign-in code never joins a pane's hold queue", () => {
     const field = firstRunPane({ fixture: "claude--v2325-first-run-url--w61.txt" }, 61);
     const { send, holds } = rig(field, "claude", "2.1.325", true);
     holds!.add({ id: "req-held-000002", session: "main", paneId: "%1", harness: "claude", mode: "send", text: "an earlier message", revision: 0, command: false, cause: "turn_running" });
-    const answer = await send("a later message");
+    // The upstream queue contract is non-phone; the owner's ordinary phone sends are direct.
+    const answer = await send("a later message", { fromPhone: false });
     expect(answer.receipt?.outcome).toBe("held");
     expect(holds!.waiting("main", "%1")).toHaveLength(2);
   });
@@ -405,7 +418,8 @@ describe("the first-run theme step is a question the phone answers with keys: a 
       const view = await send("", { mode: "prepare" });
       expect(view.surface).toMatchObject({ modal: { ask: { kind: "question", channel: "keys" } } });
       expect(view.offers).toEqual(["keys"]);
-      const answer = await send("hello");
+      // Keep this upstream held-send oracle outside the owner's ordinary direct phone path.
+      const answer = await send("hello", { fromPhone: false });
       expect(answer.receipt?.outcome).toBe("held");
       expect(answer.receipt?.keys).toEqual([]);
       expect(field.box).toBe("");

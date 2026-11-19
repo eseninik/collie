@@ -214,7 +214,7 @@ export const en = {
     "Auto shows the sidebar and pane columns on a screen at least 600 px wide and 480 px tall. Off keeps the phone layout everywhere.",
   "settings.enterSends.title": "Enter sends",
   "settings.enterSends.hint":
-    "With a physical keyboard, Enter sends the message and Shift+Enter adds a new line. With the on-screen keyboard, Enter always adds a new line.",
+    "Send with Enter on a physical keyboard. Shift+Enter adds a line. Ordinary Claude and Codex messages use Enter on either keyboard, even with this setting off.",
   "settings.paneNav.title": "Pane navigation",
   "settings.paneNav.twoFingers": "Two fingers",
   "settings.paneNav.joystick": "Joystick",
@@ -1829,6 +1829,7 @@ export const en = {
   "connection.stale.messageTemplate": "{reason}. {detail}",
   "connection.session.title": "Spaces",
   "connection.session.aria": "Space: {name}. Switch space",
+  "connection.session.moveAria": "Move {name}",
   "connection.session.primary": "primary",
   "connection.session.unreachable": "unreachable",
   "connection.session.ariaIn": "In space: {name}",

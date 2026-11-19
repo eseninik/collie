@@ -189,7 +189,7 @@ export const fr: Dictionary = {
     "Auto affiche la barre latérale et les colonnes de volets sur un écran d'au moins 600 px de large et 480 px de haut. Désactivé conserve la disposition téléphone partout.",
   "settings.enterSends.title": "Entrée envoie",
   "settings.enterSends.hint":
-    "Avec un clavier physique, Entrée envoie le message et Maj+Entrée ajoute une nouvelle ligne. Avec le clavier à l'écran, Entrée ajoute toujours une nouvelle ligne.",
+    "Avec un clavier physique, Entrée envoie le message et Maj+Entrée ajoute une ligne. Pour les messages ordinaires à Claude et Codex, Entrée envoie depuis les deux claviers, même si ce réglage est désactivé.",
   "settings.paneNav.title": "Navigation entre les volets",
   "settings.paneNav.twoFingers": "Deux doigts",
   "settings.paneNav.joystick": "Joystick",
@@ -1596,6 +1596,7 @@ export const fr: Dictionary = {
   "connection.stale.messageTemplate": "{reason}. {detail}",
   "connection.session.title": "Espaces",
   "connection.session.aria": "Espace : {name}. Changer d'espace",
+  "connection.session.moveAria": "Déplacer {name}",
   "connection.session.primary": "principal",
   "connection.session.unreachable": "inaccessible",
   "connection.session.ariaIn": "Dans l'espace : {name}",

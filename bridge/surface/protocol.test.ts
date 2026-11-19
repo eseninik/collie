@@ -5,7 +5,7 @@
 // glyph, a rule, a status row), or, for a harness with no profile, a bare editor between two rules.
 
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { muxAck, muxOk, muxRefused, muxUnconfirmed, muxUnreachable, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
@@ -65,6 +65,8 @@ function framelessProfile(): Profile {
   };
 }
 const DIALOG = [" Do you want to proceed?", " ❯ 1. Yes", "   2. No", " Esc to cancel · Enter to select"];
+/** A piece of a paste that has the shape of an image file by an absolute path, whether or not the file exists. */
+const IMAGE_NAME = /^(?:\/|[A-Za-z]:\\).*\.(?:png|jpe?g|gif|webp)$/iu;
 
 type Mode = "claude" | "generic" | "codex" | "muse";
 
@@ -295,12 +297,13 @@ class FakePane {
     void paneId;
     this.calls.push(`block:${text}`);
     if (this.now !== null) this.lastWriteAt = this.now();
-    // Claude cuts the paste at each newline and at a space before an absolute path, and attaches the
-    // pieces that are image files (lab, 2.1.305); the kept pieces stay, joined by newlines.
-    const pieces = text.split(/\n| (?=\/)/u);
-    const kept = this.imagesOnlyAlone && pieces.length > 1 ? pieces : pieces.filter((piece) => !this.imageFiles.includes(piece.trim()));
-    for (let i = kept.length; i < pieces.length; i++) this.box += `[Image #${String(++this.pastes)}]`;
-    if (kept.length < pieces.length) text = kept.join("\n");
+    // Claude cuts the paste at each newline and at a space before an absolute path (live, 2.1.306). With
+    // at least one existing image piece, each becomes a token, and blank pieces and missing or directory
+    // image-shaped pieces drop out of the kept text; with none, the paste stays exactly as sent.
+    const pieces = text.split(/\n| (?=\/|[A-Za-z]:\\)/u);
+    const attached = this.imagesOnlyAlone && pieces.length > 1 ? [] : pieces.filter((piece) => this.imageFiles.includes(piece.trim()));
+    for (const _ of attached) this.box += `[Image #${String(++this.pastes)}]`;
+    if (attached.length > 0) text = pieces.filter((piece) => piece.trim() !== "" && !IMAGE_NAME.test(piece.trim())).join("\n");
     const breaks = text.split("\n").length - 1;
     if (breaks + 1 > this.blockLiteralLines || text.length > this.collapseOver) {
       this.box += breaks > 0 ? `[Pasted text #${String(++this.pastes)} +${String(breaks)} lines]` : `[Pasted text #${String(++this.pastes)}]`;
@@ -671,14 +674,308 @@ describe("a send that goes through", () => {
     expect(pane.keysSeen).not.toContain("Enter");
   });
 
-  test("an image path outside Collie's uploads stays text: the harness takes it, the box does not match, and nothing is submitted", async () => {
-    const shot = "/home/me/screenshots/phone-1.jpg";
-    const pane = new FakePane("claude");
-    pane.imageFiles = [shot];
-    // The file exists on this disk, but only Collie's own upload shape is taken off the paste.
-    const { send } = rig({ block: true, pane, imageFiles: [shot] });
-    expect((await send(`${"слово ".repeat(300).trim()} ${shot}`)).receipt?.outcome).toBe("typed_not_submitted");
-    expect(pane.keysSeen).not.toContain("Enter");
+  // Claude Code 2.1.306, measured live 2026-11-05: a paste is cut at each newline and at each space before
+  // an absolute path, image pieces become tokens, and the kept pieces joined by newlines fold.
+  describe("an image path outside uploads in a long paste", () => {
+    const FIVE = ["строка один", "строка два", "строка три", "строка четыре", "строка пять"];
+    const A = "/home/admin/herdr-companion/screenshots/2026-11-05-e00844bbcdb5e24a.png";
+    const B = "/home/admin/herdr-companion/screenshots/2026-11-05-b.png";
+    const C = "/home/admin/herdr-companion/screenshots/2026-11-05-c.png";
+    const DOC = "/home/admin/files/spec.docx";
+    const SEVEN = (name: string): string => Array.from({ length: 7 }, (_, i) => `${name} ${String(i + 1)}`).join("\n");
+    // Twelve typed line breaks; the two cuts before a.png and doc.docx make it +14 once images are taken off.
+    const REAL = `${SEVEN("задача один")} ${A} и задача 2 - ${SEVEN("задача два")} ${DOC} ${B} ${C}`;
+    const STRANDED = "[Image #1] [Image #2][Pasted text #3 +14 lines]";
+
+    /** The fake's cut and counts, with the space Claude Code draws between two image tokens. */
+    function drawsMeasuredTokens(pane: FakePane): void {
+      pane.afterInput = (p, what) => {
+        if (what.startsWith("block:")) p.box = p.box.replace(/(\[Image #\d+\])(?=\[Image)/gu, "$1 ");
+      };
+    }
+
+    function realPane(): FakePane {
+      const pane = new FakePane("claude");
+      pane.imageFiles = [B, C];
+      drawsMeasuredTokens(pane);
+      return pane;
+    }
+
+    function enters(pane: FakePane): number {
+      return pane.keysSeen.filter((key) => key === "Enter").length;
+    }
+
+    /** A box the harness draws, whatever the paste held. */
+    function drawing(box: string): FakePane {
+      const pane = new FakePane("claude");
+      pane.afterInput = (p, what) => {
+        if (what.startsWith("block:")) p.box = box;
+      };
+      return pane;
+    }
+
+    // The rig pins Claude's verified range through 2.1.296, so the measured 2.1.306 takes the probed path.
+    for (const [version, keys] of [["2.1.200", ["Enter"]], ["2.1.306", ["probe", "Backspace", "Enter"]]] as const) {
+      test(`PI-1: the real message sends with two image tokens then the fold (profile at ${version})`, async () => {
+        const pane = realPane();
+        const { send } = rig({ block: true, pane, version, imageFiles: [A, B, C, DOC] });
+        expect((await send(REAL)).receipt).toMatchObject({ outcome: "sent", keys: [...keys] });
+        expect(enters(pane)).toBe(1);
+        expect(pane.calls.filter((call) => call.startsWith("block:"))).toEqual([`block:${REAL}`]);
+        expect(pane.transcript.at(-1)).toBe("> [Image #1] [Image #2][Pasted text #3 +14 lines]");
+      });
+    }
+
+    for (const path of ["/home/me/shots/x.png", "/home/me/shots/X.PNG", "/home/me/shots/x.jpg", "/home/me/shots/x.jpeg", "/home/me/shots/x.gif", "/home/me/shots/x.webp", "/home/me/my shots/with space.png"]) {
+      for (const [name, gap] of [["after a space", " "], ["on a line of its own", "\n"]] as const) {
+        test(`PI-2: ${path} ${name}, ending a long message, sends`, async () => {
+          const pane = new FakePane("claude");
+          pane.imageFiles = [path];
+          const { send } = rig({ block: true, pane, imageFiles: [path] });
+          expect((await send(`${FIVE.join("\n")}${gap}${path}`)).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+          expect(enters(pane)).toBe(1);
+          expect(pane.transcript.at(-1)).toBe("> [Image #1][Pasted text #2 +4 lines]");
+        });
+      }
+    }
+
+    test("PI-2: a foreign image path ending a long one-line dictation sends", async () => {
+      const shot = "/home/me/screenshots/phone-1.jpg";
+      const pane = new FakePane("claude");
+      pane.imageFiles = [shot];
+      const { send } = rig({ block: true, pane, imageFiles: [shot] });
+      expect((await send(`${"слово ".repeat(300).trim()} ${shot}`)).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+      expect(pane.transcript.at(-1)).toBe("> [Image #1][Pasted text #2]");
+    });
+
+    const TEXT_ENDINGS: readonly (readonly [string, string, boolean])[] = [
+      ["an existing .bmp", "/home/me/shots/x.bmp", true],
+      ["an existing .svg", "/home/me/shots/x.svg", true],
+      ["an existing .heic", "/home/me/shots/x.heic", true],
+      ["a .png with no file", "/home/me/shots/gone.png", false],
+      ["a directory named d.png", "/home/me/shots/d.png", false],
+      ["a relative path", "shots/a.png", true],
+      ["a home path", "~/x.png", true],
+      ["an image path with words after it", "/home/me/shots/a.png слова", true],
+    ];
+    const MEASURED = profileFor("claude", "2.1.304", { log: () => undefined });
+
+    for (const [name, ending, exists] of TEXT_ENDINGS) {
+      test(`PI-3: ${name} is text: no image expected, and the send goes`, async () => {
+        const path = ending.replace(" слова", "");
+        const onDisk = (candidate: string): boolean => exists && candidate === path;
+        expect(wholePaste(MEASURED, [...FIVE.slice(0, 4), `${FIVE[4]} ${ending}`], onDisk)?.images).toBe(0);
+        expect(wholePaste(MEASURED, [...FIVE, ending], onDisk)?.images).toBe(0);
+        const { pane, send } = rig({ block: true, imageFiles: exists ? [path] : [] });
+        expect((await send(`${FIVE.join("\n")} ${ending}`)).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+        expect(pane.transcript.at(-1)).toBe("> [Pasted text #1 +4 lines]");
+      });
+    }
+
+    test("PI-4: a harness that leaves the path as text folds every typed line break, and the send goes", async () => {
+      const shot = "/home/me/shots/x.png";
+      const { pane, send } = rig({ block: true, imageFiles: [shot] });
+      expect((await send(`${FIVE.join("\n")}\n${shot}`)).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+      expect(pane.transcript.at(-1)).toBe("> [Pasted text #1 +5 lines]");
+    });
+
+    test("PI-4: the real message left as text folds its twelve typed line breaks, and the send goes", async () => {
+      const { pane, send } = rig({ block: true, imageFiles: [A, B, C, DOC] });
+      expect((await send(REAL)).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+      expect(pane.transcript.at(-1)).toBe("> [Pasted text #1 +12 lines]");
+    });
+
+    for (const box of ["[Image #1][Pasted text #2 +3 lines]", "[Image #1][Pasted text #2 +5 lines]", "[Pasted text #1 +4 lines]", "[Image #1] [Image #2][Pasted text #3 +4 lines]"]) {
+      test(`PI-5: one image expected, the box ${box} gets no Enter`, async () => {
+        const shot = "/home/me/shots/x.png";
+        const pane = drawing(box);
+        const { send } = rig({ block: true, pane, imageFiles: [shot] });
+        expect((await send(`${FIVE.join("\n")}\n${shot}`)).receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "mismatch" });
+        expect(pane.keysSeen).not.toContain("Enter");
+      });
+    }
+
+    for (const box of [
+      "[Image #1] [Image #2][Pasted text #3 +13 lines]",
+      "[Image #1] [Image #2][Pasted text #3 +15 lines]",
+      "[Image #1] [Image #2][Pasted text #3 +12 lines]",
+      "[Image #1][Pasted text #2 +14 lines]",
+      "[Pasted text #1 +14 lines]",
+      "[Image #1] [Image #2] [Image #3][Pasted text #4 +14 lines]",
+      "[Image #1] [Image #2] [Image #3][Pasted text #4 +13 lines]",
+    ]) {
+      test(`PI-5: the real message, the box ${box} gets no Enter`, async () => {
+        const pane = drawing(box);
+        const { send } = rig({ block: true, pane, imageFiles: [A, B, C, DOC] });
+        expect((await send(REAL)).receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "mismatch" });
+        expect(pane.keysSeen).not.toContain("Enter");
+      });
+    }
+
+    test("PI-6: Replace over a stranded box empties it and sends the same message", async () => {
+      const pane = realPane();
+      pane.box = STRANDED;
+      pane.pastes = 3;
+      const { send } = rig({ block: true, pane, imageFiles: [A, B, C, DOC] });
+      expect((await send(REAL, { mode: "replace" })).receipt).toMatchObject({ outcome: "sent", keys: expect.arrayContaining(["Enter"]) });
+      expect(pane.keysSeen).toContain("Backspace");
+      expect(enters(pane)).toBe(1);
+      expect(pane.box).toBe("");
+      expect(pane.transcript.at(-1)).toBe("> [Image #4] [Image #5][Pasted text #6 +14 lines]");
+    });
+
+    test("PI-6: Add to a stranded box sends the old tokens and the new message together", async () => {
+      const pane = realPane();
+      pane.box = STRANDED;
+      pane.pastes = 3;
+      const { send } = rig({ block: true, pane, imageFiles: [A, B, C, DOC] });
+      expect((await send(REAL, { mode: "append" })).receipt).toMatchObject({ outcome: "sent", keys: expect.arrayContaining(["Enter"]) });
+      expect(enters(pane)).toBe(1);
+      expect(pane.transcript.at(-1)).toBe(`> ${STRANDED}[Image #4] [Image #5][Pasted text #6 +14 lines]`);
+    });
+
+    // The second live measure on 2.1.306: real line feeds, the box emptied between cases.
+    const P = "/home/me/shots/p.png";
+    const D = "/home/me/shots/d.png";
+    const N = "/home/me/shots/gone.png";
+    const BODY = (count: number, from = 1): string[] => Array.from({ length: count }, (_, i) => `строка ${String(from + i)} ${"слово ".repeat(20).trim()}`);
+    const TWO = BODY(2).join("\n");
+    const NEXT_TWO = BODY(2, 3).join("\n");
+    const FOUR = BODY(4).join("\n");
+
+    async function expectSent(text: string, box: string, attaches: readonly string[] = [P], onDisk: readonly string[] = attaches): Promise<void> {
+      const pane = new FakePane("claude");
+      pane.imageFiles = attaches;
+      drawsMeasuredTokens(pane);
+      const { send } = rig({ block: true, pane, imageFiles: onDisk });
+      expect((await send(text)).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+      expect(enters(pane)).toBe(1);
+      expect(pane.transcript.at(-1)).toBe(`> ${box}`);
+    }
+
+    async function expectNoEnter(text: string, box: string): Promise<void> {
+      const pane = drawing(box);
+      const { send } = rig({ block: true, pane, imageFiles: [P] });
+      expect((await send(text)).receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "mismatch" });
+      expect(pane.keysSeen).not.toContain("Enter");
+    }
+
+    const onlyP = (path: string): boolean => path === P;
+
+    for (const [name, text] of [
+      ["two blank lines around a body", `${TWO}\n\n${NEXT_TWO}\n\n${P}`],
+      ["the path between blank lines", `${TWO}\n\n${P}\n\n${NEXT_TWO}`],
+      ["four line feeds in a row", `${TWO}\n\n\n\n${NEXT_TWO} ${P}`],
+    ] as const) {
+      test(`PI-8: ${name}: the blank pieces drop out, and the box with +3 sends`, async () => {
+        expect(wholePaste(MEASURED, text.split("\n"), onlyP)).toMatchObject({ images: 1, lines: BODY(4) });
+        await expectSent(text, "[Image #1][Pasted text #2 +3 lines]");
+      });
+
+      test(`PI-8: ${name}: a wrong count gets no Enter`, async () => {
+        for (const box of ["[Image #1][Pasted text #2 +2 lines]", "[Image #1][Pasted text #2 +4 lines]", "[Image #1][Pasted text #2 +5 lines]", "[Image #1][Pasted text #2 +6 lines]", "[Pasted text #1 +3 lines]"]) {
+          await expectNoEnter(text, box);
+        }
+      });
+    }
+
+    for (const [name, text] of [
+      ["a line of spaces", `${TWO}\n   \n${NEXT_TWO} ${P}`],
+      ["a line with one tab", `${TWO}\n\t\n${NEXT_TWO} ${P}`],
+      ["a path indented by two spaces", `${FOUR}\n  ${P}`],
+      ["a path indented by one space", `${FOUR}\n ${P}`],
+      ["two spaces before the path", `${FOUR}  ${P}`],
+      ["a newline after the path", `${FOUR} ${P}\n`],
+      ["a space after the path", `${FOUR} ${P} `],
+    ] as const) {
+      test(`PI-9: ${name} leaves no line in the kept text: +3`, async () => {
+        const whole = wholePaste(MEASURED, text.split("\n"), onlyP);
+        expect(whole?.images).toBe(1);
+        expect(whole?.lines.map((line) => line.trim())).toEqual(BODY(4));
+        await expectSent(text, "[Image #1][Pasted text #2 +3 lines]");
+      });
+    }
+
+    for (const [name, text] of [
+      ["indented words", `${TWO}\n   слово\n${NEXT_TWO} ${P}`],
+      ["words under a line that ends in spaces", `${TWO}   \nслово\n${NEXT_TWO} ${P}`],
+    ] as const) {
+      test(`PI-9: ${name} keep their line: +4`, async () => {
+        const whole = wholePaste(MEASURED, text.split("\n"), onlyP);
+        expect(whole?.images).toBe(1);
+        expect(whole?.lines.map((line) => line.trim())).toEqual([...BODY(2), "слово", ...BODY(2, 3)]);
+        await expectSent(text, "[Image #1][Pasted text #2 +4 lines]");
+      });
+    }
+
+    for (const [name, gone] of [["a directory named d.png", D], ["a missing png", N]] as const) {
+      const text = `${FOUR} ${gone} ${P}`;
+      test(`PI-10: ${name} beside an existing image vanishes from the kept text: +3`, async () => {
+        expect(wholePaste(MEASURED, text.split("\n"), onlyP)).toMatchObject({ images: 1, lines: BODY(4) });
+        await expectSent(text, "[Image #1][Pasted text #2 +3 lines]");
+      });
+
+      test(`PI-10: ${name} beside an existing image: a count that keeps it gets no Enter`, async () => {
+        await expectNoEnter(text, "[Image #1][Pasted text #2 +4 lines]");
+      });
+    }
+
+    test("PI-10: a path that is no image shape beside an existing image stays in the kept text: +4", async () => {
+      const text = `${TWO}\n\n${NEXT_TWO} /etc/hosts ${P}`;
+      expect(wholePaste(MEASURED, text.split("\n"), onlyP)).toMatchObject({ images: 1, lines: [...BODY(4), "/etc/hosts"] });
+      await expectSent(text, "[Image #1][Pasted text #2 +4 lines]");
+    });
+
+    for (const [name, text, box] of [
+      ["blank lines", `${TWO}\n\n${NEXT_TWO}`, "[Pasted text #1 +4 lines]"],
+      ["a directory and a missing png after a space", `${FOUR} ${D} ${N}`, "[Pasted text #1 +3 lines]"],
+      ["a directory and a missing png on their own lines", `${FOUR}\n${D}\n${N}`, "[Pasted text #1 +5 lines]"],
+    ] as const) {
+      test(`PI-10: with no existing image the paste stays as sent: ${name}`, async () => {
+        expect(wholePaste(MEASURED, text.split("\n"), () => false)).toMatchObject({ images: 0, lines: text.split("\n") });
+        await expectSent(text, box, [], []);
+      });
+    }
+
+    test("PI-11: the default file check takes a real png and leaves a real directory named d.png", () => {
+      const png = join(dir, "a.png");
+      const directory = join(dir, "d.png");
+      writeFileSync(png, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+      mkdirSync(directory);
+      expect(wholePaste(MEASURED, ["see", png])).toMatchObject({ images: 1, lines: ["see"] });
+      expect(wholePaste(MEASURED, ["see", directory])).toMatchObject({ images: 0, lines: ["see", directory] });
+    });
+
+    test("PI-11: a foreign Windows path counts only when the check says it exists", () => {
+      const path = String.raw`C:\shots\a.png`;
+      expect(wholePaste(MEASURED, ["see", path], () => true)).toMatchObject({ images: 1, lines: ["see"] });
+      expect(wholePaste(MEASURED, ["see", path], () => false)).toMatchObject({ images: 0, lines: ["see", path] });
+    });
+
+    // A first line that starts with a POSIX slash is a reserved lead, so an opening path goes through Windows paths.
+    test("PI-12: one Windows path opening the message is lifted, and the rest folds: +4", async () => {
+      const path = String.raw`C:\shots\a.png`;
+      const text = `${path}\n${BODY(5).join("\n")}`;
+      expect(wholePaste(MEASURED, text.split("\n"), () => true)).toMatchObject({ images: 1, lines: BODY(5) });
+      await expectSent(text, "[Image #1][Pasted text #2 +4 lines]", [path]);
+    });
+
+    test("PI-12: two Windows paths opening the message are lifted, and the rest folds: +4", async () => {
+      const first = String.raw`C:\shots\a.png`;
+      const second = String.raw`C:\shots\b.png`;
+      const text = `${first} ${second}\n${BODY(5).join("\n")}`;
+      expect(wholePaste(MEASURED, text.split("\n"), () => true)).toMatchObject({ images: 2, lines: BODY(5) });
+      await expectSent(text, "[Image #1] [Image #2][Pasted text #3 +4 lines]", [first, second]);
+    });
+
+    test("PI-12: a short kept text lands literally after the token", async () => {
+      const pane = new FakePane("claude");
+      pane.imageFiles = [P];
+      pane.collapseOver = 1000;
+      const { send } = rig({ block: true, pane, imageFiles: [P] });
+      expect((await send(`раз\nдва\nтри ${P}`)).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+      expect(pane.transcript.at(-1)).toBe("> [Image #1]раз два три");
+    });
   });
 
   test("Submit finds a box that holds the image token and the folded paste", async () => {
@@ -1652,22 +1949,24 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
     expect(pane.keysSeen).not.toContain("Enter");
   });
 
-  test("a provisional Codex: the probe passes though the hint row under the box hides at the first character (lab screens of 0.163.0, on 0.164.0)", async () => {
-    const { pane, send } = codex({ version: "0.164.0" });
+  // The captured 0.163.0 screen shape is independent of the simulated version. Keep the latter
+  // above the verified range so these scenarios continue to exercise the provisional probe.
+  test("a provisional Codex: the probe passes though the hint row under the box hides at the first character (lab screens of 0.163.0, simulated provisional 0.170.0)", async () => {
+    const { pane, send } = codex({ version: "0.170.0" });
     const answer = await send("please list the files in this folder");
     expect(answer.receipt).toMatchObject({ outcome: "sent", profileStatus: "provisional", keys: ["probe", "Backspace", "Tab"] });
     expect(pane.transcript.at(-1)).toBe("› please list the files in this folder");
   });
 
   test("a fresh Codex hides its welcome picture at the first character: the rows above only lost text, so the probe passes (lab, 0.163.0)", async () => {
-    const { pane, send } = codex({ version: "0.164.0" });
+    const { pane, send } = codex({ version: "0.170.0" });
     pane.codexWelcome = CODEX_WELCOME;
     const answer = await send("please list the files in this folder");
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Tab"] });
   });
 
   test("a row above the Codex box that gains text no longer fails the probe: the send goes in with Tab, never Enter (2026-10-17 decision)", async () => {
-    const { pane, send } = codex({ version: "0.164.0" });
+    const { pane, send } = codex({ version: "0.170.0" });
     // Rows high above the box, past the profile's volatile band over the top edge.
     pane.transcript = ["• first", "• second", "• third", "• fourth", "• fifth", "• sixth", "• seventh", "• eighth"];
     pane.afterInput = (p, what) => {
@@ -1681,7 +1980,7 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
   });
 
   test("a row under the Codex box that is no hint still fails the probe", async () => {
-    const { pane, send } = codex({ version: "0.164.0" });
+    const { pane, send } = codex({ version: "0.170.0" });
     pane.afterInput = (p, what) => {
       if (what.startsWith("type:")) p.codexHint = "  a row that is no hint";
     };
@@ -1835,6 +2134,39 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
     expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(answer.receipt?.keys.at(-1)).toBe("Enter");
     expect(pane.keysSeen).not.toContain("Tab");
+  });
+
+  // Local, 1.28.5 port review: since 1.28.5 a command may take the turn-aware compare, and on Codex an
+  // answer streams with no working row (lab, 0.163.0). The command then queues with Tab, as measured.
+  test("a command while an answer streams with no working row: Tab queues it, never Enter", async () => {
+    const { pane, send } = codex();
+    streams(pane);
+    const answer = await send("/status", { mode: "command" });
+    expect(answer.receipt?.keys.at(-1)).toBe("Tab");
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.queued).toEqual(["/status"]);
+  });
+
+  test("a never-held command while an answer streams with no working row never runs: it stays in the box, unsent", async () => {
+    const { pane, send } = codex();
+    streams(pane);
+    const answer = await send("/new", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", keys: [] });
+    expect(pane.keysSeen).toEqual([]);
+    expect(pane.queued).toEqual([]);
+    expect(pane.box).toBe("/new");
+  });
+
+  test("the turn ends while the command is typed: the box is free, so Enter runs it, never Tab into the slash popup", async () => {
+    const { pane, send } = codex();
+    streams(pane);
+    pane.afterInput = (p, what) => {
+      if (what.includes("/status")) p.turn = false;
+    };
+    const answer = await send("/status", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(pane.keysSeen).not.toContain("Tab");
+    expect(pane.transcript).toContain("› /status");
   });
 
   test("`!ls` is a shell command on Codex: Enter on an idle box; in a turn it is refused, never queued (keys.neverHeld)", async () => {
@@ -3809,7 +4141,7 @@ describe("pure helpers", () => {
     expect(boxMatches("[Pasted text #1 +30 lines]", "", thirty, claudeCollapse, claudeThirty)).toBe(false);
   });
 
-  test("wholePaste: only a profile that measured it, only a long or multi-line text without a reserved lead, upload images taken off", () => {
+  test("wholePaste: only a profile that measured it, only a long or multi-line text without a reserved lead, image files taken off", () => {
     const match = profileFor("claude", "2.1.304", { log: () => undefined });
     expect(match?.profile.paste?.block).toBe(true);
     const shot = "/srv/collie/uploads/w1_p1-mf3x9q-0a1b2c3d.jpg";
@@ -3825,9 +4157,9 @@ describe("pure helpers", () => {
     expect(wholePaste(match, [`see ${shot}`, "b"], isShot)).toMatchObject({ images: 1, lines: ["see", "b"], literal: [`see ${shot}`, "b"] });
     expect(wholePaste(match, [`see ${shot} here`, "b"], isShot)).toMatchObject({ images: 0 });
     expect(wholePaste(match, ["see /srv/collie/uploads/w1_p1-mf3x9q-ffffffff.jpg", "b"], isShot)).toMatchObject({ images: 0 });
-    // Any other image file on the disk stays text: only Collie's own upload shape is taken off.
-    expect(wholePaste(match, ["see", foreign], isShot)).toMatchObject({ images: 0, lines: ["see", foreign] });
-    expect(wholePaste(match, [`see ${foreign}`, "b"], isShot)).toMatchObject({ images: 0 });
+    // Any other image file on the disk is taken off the same way (Claude Code 2.1.306, live 2026-11-05).
+    expect(wholePaste(match, ["see", foreign], isShot)).toMatchObject({ images: 1, lines: ["see"] });
+    expect(wholePaste(match, [`see ${foreign}`, "b"], isShot)).toMatchObject({ images: 1, lines: ["see", "b"] });
     expect(wholePaste(match, [`see ${windows}`, "b"], isShot)).toMatchObject({ images: 1, lines: ["see", "b"] });
     expect(wholePaste(match === null ? null : { ...match, profile: { ...match.profile, paste: { bracketed: true } } }, ["a", "b"], isShot)).toBeNull();
     expect(wholePaste(null, ["a", "b"], isShot)).toBeNull();
@@ -5558,7 +5890,8 @@ describe("the held send (M56 spec 15)", () => {
     const holds = new HoldStore(join(dir, "held"));
     const r = rig({ holds });
     r.pane.over = [LIVE_ROW];
-    for (const text of ["/clear", "/resume", "!git status"]) {
+    // The Claude profile's never-held list; a `!` shell line left it on 2026-11-09 (owner): BANG-QUEUE-1.
+    for (const text of ["/clear", "/resume"]) {
       const answer = await r.send(text, { mode: "command" });
       expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
       expect(answer.detail).toBe("Collie does not queue this command during a turn. Send it when the turn ends.");
@@ -5749,7 +6082,8 @@ describe("the held send (M56 spec 15)", () => {
     const holds = new HoldStore(join(dir, "held"));
     const r = rig({ edit: steersWithNoQueueKey, holds });
     r.pane.over = [LIVE_ROW];
-    for (const text of ["/clear", "/resume", "!git status"]) {
+    // Shell lines have separate coverage in BANG-HOLD.
+    for (const text of ["/clear", "/resume"]) {
       const answer = await r.send(text, { mode: "command" });
       expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
       expect(answer.detail).toBe("Collie does not queue this command during a turn. Send it when the turn ends.");
@@ -5762,6 +6096,99 @@ describe("the held send (M56 spec 15)", () => {
     const u = untrusted({ holds: untrustedHolds });
     expect((await u.send("/clear", { mode: "command" })).receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
     expect(untrustedHolds.list()).toEqual([]);
+  });
+
+  // Review of BANG-QUEUE (2026-11-09): a `!` shell line goes only to Claude's own visible queue (owner),
+  // never into Collie's holds, which type it later, after the turn and maybe on a later session (the
+  // rule above: a command that may not wait is refused, never held).
+  test("@oracle:requirement @req:BANG-HOLD-1 a `!` line on a Claude whose version was not read is refused in a turn, never held or typed later", async () => {
+    const r = untrusted();
+    const answer = await r.send("! git status", { id: "bang-hold-01", mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect(r.holds.list()).toEqual([]);
+    expect(r.protocol.heldOf("main", "%1")).toEqual([]);
+    expect(r.pane.calls).toEqual([]);
+    expect(r.pane.keysSeen).toEqual([]);
+    // Nothing comes back for it once the turn ends.
+    turnEnds(r.pane);
+    await freeTwice(r);
+    await tick(r);
+    expect(r.pane.calls).toEqual([]);
+    expect(r.pane.transcript).not.toContain("> ! git status");
+  });
+
+  test("@oracle:requirement @req:BANG-HOLD-2 a `!` line behind an earlier held send is refused, not held behind it", async () => {
+    const r = untrusted();
+    expect((await r.send("first message", { id: "bang-hold-02" })).receipt).toMatchObject({ outcome: "held" });
+    turnEnds(r.pane);
+    const answer = await r.send("! git status", { id: "bang-hold-03", mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect(answer.detail).toBe("Collie does not queue this command during a turn. Send it when the turn ends.");
+    expect(r.holds.list().map((entry) => entry.id)).toEqual(["bang-hold-02"]);
+    expect(r.protocol.heldOf("main", "%1").map((row) => row.requestId)).toEqual(["bang-hold-02"]);
+    expect(r.pane.calls).toEqual([]);
+    // The earlier send still goes, alone.
+    const [first] = await freeTwice(r);
+    expect(first?.receipt).toMatchObject({ requestId: "bang-hold-02", outcome: "sent" });
+    expect(r.pane.transcript).not.toContain("> ! git status");
+  });
+
+  test("@oracle:requirement @req:BANG-HOLD-3 in the same two setups a message and /compact are still held", async () => {
+    const r = untrusted();
+    expect((await r.send("/compact", { id: "bang-hold-04", mode: "command" })).receipt).toMatchObject({ outcome: "held", keys: [] });
+    expect((await r.send("then give it a title", { id: "bang-hold-05" })).receipt).toMatchObject({ outcome: "held", keys: [] });
+    const behind = untrusted({ holds: new HoldStore(join(dir, "held-behind")) });
+    expect((await behind.send("first message", { id: "bang-hold-06" })).receipt).toMatchObject({ outcome: "held" });
+    turnEnds(behind.pane);
+    const compact = await behind.send("/compact", { id: "bang-hold-07", mode: "command" });
+    expect(compact.receipt).toMatchObject({ outcome: "held", keys: [] });
+    expect(compact.detail).toBe("Earlier messages wait for this pane. Collie sends this after them.");
+    expect(r.holds.list().map((entry) => entry.id)).toEqual(["bang-hold-04", "bang-hold-05"]);
+    expect(behind.holds.list().map((entry) => entry.id)).toEqual(["bang-hold-06", "bang-hold-07"]);
+    expect(r.pane.calls).toEqual([]);
+    expect(behind.pane.calls).toEqual([]);
+  });
+
+  // Review of BANG-HOLD (2026-11-09): the rule reads the line as Collie types it. The typed text drops
+  // paste markers and control bytes (sendLines), so a `!` behind them is still a shell line.
+  describe("@oracle:requirement @req:BANG-HOLD-4 a `!` line is never held, read as it is typed", () => {
+    const NEVER = "Collie does not queue this command during a turn. Send it when the turn ends.";
+
+    test.each([
+      ["behind paste markers", "\u001b[200~! git status\u001b[201~"],
+      ["behind a control byte", "\u0007! git status"],
+    ])("%s: refused in a turn, never held, never typed after it", async (_name, text) => {
+      const r = untrusted();
+      const answer = await r.send(text, { id: "bang-hold-41", mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+      expect(r.holds.list()).toEqual([]);
+      expect(r.pane.calls).toEqual([]);
+      turnEnds(r.pane);
+      await freeTwice(r);
+      await tick(r);
+      expect(r.pane.calls).toEqual([]);
+      expect(r.pane.transcript.some((row) => row.includes("git status"))).toBe(false);
+    });
+
+    test("behind paste markers, after an earlier held message: refused, not held behind it", async () => {
+      const r = untrusted();
+      expect((await r.send("first message", { id: "bang-hold-42" })).receipt).toMatchObject({ outcome: "held" });
+      turnEnds(r.pane);
+      const answer = await r.send("\u001b[200~! git status\u001b[201~", { id: "bang-hold-43", mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+      expect(answer.detail).toBe(NEVER);
+      expect(r.holds.list().map((entry) => entry.id)).toEqual(["bang-hold-42"]);
+      expect(r.pane.calls).toEqual([]);
+    });
+
+    test("Replace with a `!` line in a turn is not held", async () => {
+      const r = untrusted();
+      const answer = await r.send("! git status", { id: "bang-hold-44", mode: "replace" });
+      expect(answer.receipt?.outcome).not.toBe("held");
+      expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+      expect(r.holds.list()).toEqual([]);
+      expect(r.pane.calls).toEqual([]);
+    });
   });
 
   test("a held command expires after 10 minutes, a held text after 30 (H6)", async () => {
@@ -11127,10 +11554,18 @@ describe("a Codex 0.169.0 goal notice remains after the empty-box shortcuts disa
     pane.render = () => `${render()}${pane.box === "" ? "" : "\n"}${" ".repeat(70)}${notice}`;
     return pane;
   };
+  const withoutGoalHint = (profile: Profile): Profile => ({
+    ...profile,
+    idle: { ...profile.idle, volatile: { ...profile.idle.volatile, below: {
+      ...profile.idle.volatile.below,
+      hints: (profile.idle.volatile.below.hints ?? []).filter((hint) => !hint.includes("Goal hit usage limits")),
+    } } },
+  });
 
+  // Keep the probe path in these two tests when the installed profile verifies 0.169.0.
   test("the standalone goal footer does not hold a message with probe_failed", async () => {
     const pane = goalPane();
-    const answer = await rig({ pane, harness: "codex", version: "0.169.0" }).send("reply with one word: ready");
+    const answer = await rig({ pane, harness: "codex", version: "0.169.0", status: "provisional" }).send("reply with one word: ready");
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Tab"] });
     expect(pane.transcript.at(-1)).toBe("› reply with one word: ready");
   });
@@ -11141,18 +11576,35 @@ describe("a Codex 0.169.0 goal notice remains after the empty-box shortcuts disa
       pane,
       harness: "codex",
       version: "0.169.0",
-      edit: (profile) => ({
-        ...profile,
-        idle: { ...profile.idle, volatile: { ...profile.idle.volatile, below: {
-          ...profile.idle.volatile.below,
-          hints: (profile.idle.volatile.below.hints ?? []).filter((hint) => !hint.includes("Goal hit usage limits")),
-        } } },
-      }),
+      status: "provisional",
+      edit: withoutGoalHint,
     }).send("reply with one word: ready");
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe", "Backspace"] });
     expect(answer.receipt?.detail).toStartWith("The probe character changed more than the box.");
     expect(pane.box).toBe("");
     expect(pane.transcript).not.toContain("› reply with one word: ready");
+  });
+
+  test("@req:COLLIE-1291-CODEX-GOAL @oracle:requirement the verified profile sends one phone message with the goal footer", async () => {
+    const pane = goalPane();
+    const transcriptStart = pane.transcript.length;
+    const text = "reply with one word: ready";
+    const answer = await rig({ pane, harness: "codex", version: "0.169.0" }).send(text, { fromPhone: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", profileStatus: "verified", keys: ["Tab"] });
+    expect(pane.calls).toEqual([`paste:${text}`]);
+    expect(pane.keysSeen).toEqual(["Tab"]);
+    expect(pane.transcript.slice(transcriptStart)).toEqual([`› ${text}`]);
+  });
+
+  test("@req:COLLIE-1291-CODEX-GOAL-GUARD @oracle:requirement a verified phone send stays typed when the goal hint is missing", async () => {
+    const pane = goalPane();
+    const text = "reply with one word: ready";
+    const answer = await rig({ pane, harness: "codex", version: "0.169.0", edit: withoutGoalHint }).send(text, { fromPhone: true });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", profileStatus: "verified" });
+    expect(pane.box).toBe(text);
+    expect(pane.keysSeen).not.toContain("Tab");
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.transcript).not.toContain(`› ${text}`);
   });
 
   test("the goal hint matches only the observed status and its warning suffix", () => {
@@ -11232,7 +11684,9 @@ describe("a command on a fresh Codex 0.163.0 screen, whose welcome picture hides
   });
 });
 
-describe("a probed message into a tall Codex 0.166.0 pane (harness lab drift, 2026-10-29)", () => {
+describe("a provisional Codex probing tall 0.166.0 captures (harness lab drift, 2026-10-29)", () => {
+  // The fixtures stay byte-faithful 0.166.0 captures. The simulated 0.170.0 instance is beyond
+  // the verified range, which is what requires the probe whose effects these tests pin.
   // eslint-disable-next-line no-control-regex
   const plain = (row: string): string => row.replace(/\u001b\[[0-9;:?]*[ -/]*[@-~]/gu, "");
   const pane = (name: string): string[] => readFileSync(join(import.meta.dirname, "..", "..", "web", "src", "fixtures", "panes", name), "utf8").replace(/\n$/u, "").split("\n");
@@ -11267,39 +11721,39 @@ describe("a probed message into a tall Codex 0.166.0 pane (harness lab drift, 20
 
   test("the 17-row logo hides at the probe character and returns after Backspace: the rows above only lost text, so the probe passes and Tab sends", async () => {
     const fake = logo();
-    const answer = await rig({ pane: fake, harness: "codex", version: "0.166.0" }).send("reply with one word: ready");
+    const answer = await rig({ pane: fake, harness: "codex", version: "0.170.0" }).send("reply with one word: ready");
     expect(answer.receipt).toMatchObject({ outcome: "sent", profileStatus: "provisional", keys: ["probe", "Backspace", "Tab"] });
     expect(fake.transcript.at(-1)).toBe("› reply with one word: ready");
   });
 
   test("a message's probe reads only the box and the rows under it (Codex takes text in a turn): the logo is no factor, with or without losesText", async () => {
-    const answer = await rig({ pane: logo(), harness: "codex", version: "0.166.0", edit: noLosesText }).send("reply with one word: ready");
+    const answer = await rig({ pane: logo(), harness: "codex", version: "0.170.0", edit: noLosesText }).send("reply with one word: ready");
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Tab"] });
   });
 
   test("a command compares the rows above too: the logo only lost its rows (idle.volatile.above.losesText), so /status goes in", async () => {
     const fake = logo();
-    const answer = await rig({ pane: fake, harness: "codex", version: "0.166.0" }).send("/status", { mode: "command" });
+    const answer = await rig({ pane: fake, harness: "codex", version: "0.170.0" }).send("/status", { mode: "command" });
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
   });
 
   test("without losesText the logo going reads as a moved screen for a command, and its probe is refused", async () => {
     const fake = logo();
-    const answer = await rig({ pane: fake, harness: "codex", version: "0.166.0", edit: noLosesText }).send("/status", { mode: "command" });
+    const answer = await rig({ pane: fake, harness: "codex", version: "0.170.0", edit: noLosesText }).send("/status", { mode: "command" });
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
     expect(fake.keysSeen).not.toContain("Enter");
   });
 
   test("a lone `⚠ 1 warning · f2 to view` row under the box once it holds text is a hint, so the probe passes and Tab sends", async () => {
     const fake = warning();
-    const answer = await rig({ pane: fake, harness: "codex", version: "0.166.0" }).send("reply with one word: ready");
+    const answer = await rig({ pane: fake, harness: "codex", version: "0.170.0" }).send("reply with one word: ready");
     expect(answer.receipt).toMatchObject({ outcome: "sent", profileStatus: "provisional", keys: ["probe", "Backspace", "Tab"] });
     expect(fake.transcript.at(-1)).toBe("› reply with one word: ready");
   });
 
   test("without the warning hint the lone warning row counts as a screen that moved, and the probe is refused, as it was in the lab", async () => {
     const fake = warning();
-    const answer = await rig({ pane: fake, harness: "codex", version: "0.166.0", edit: noWarningHint }).send("reply with one word: ready");
+    const answer = await rig({ pane: fake, harness: "codex", version: "0.170.0", edit: noWarningHint }).send("reply with one word: ready");
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
     expect(fake.keysSeen.filter((key) => key === "Tab" || key === "Enter")).toEqual([]);
   });
@@ -12527,5 +12981,481 @@ describe("an override is never held, and goes into a turn as the manual commit d
     expect(answer.receipt).toMatchObject({ outcome: control.receipt!.outcome, keys: control.receipt!.keys });
     expect(answer.receipt?.queued).toBe(control.receipt?.queued);
     expect(pane.keysSeen).toEqual(plain.pane.keysSeen);
+  });
+});
+
+
+// The owner's pane, 2026-11-09 (receipt 84b8cbc4): a `!` shell line sent as a command to an idle Claude
+// Code 2.1.319 box, 120 columns. Claude draws its path completion under the box: one row, its pointer on
+// the path that is the text's last word. The send ended typed_not_submitted (modal_cue, "pointed at
+// another command") and Enter was never pressed. In the same pane, with that row drawn, a raw Enter
+// submitted the line unchanged: the row is a completion of what is typed, not another command. The
+// typed screen is the pane's capture; the empty and probe screens are the same box without the text,
+// drawn here from its edge rows, because the field kept only the typed read.
+describe("Claude Code 2.1.319, a `!` shell line over its path completion row (owner's pane, 2026-11-09)", () => {
+  const FIXTURES = join(import.meta.dir, "fixtures");
+  const TYPED = readFileSync(join(FIXTURES, "claude--v2319-bang-path-completion--w120.txt"), "utf8").replace(/\n$/u, "");
+  const PATH = "/tmp/claude-1000/-home-admin-projects-ss-form/45649e85-9af7-4fcd-b8ab-dfb5bc6ee83a/scratchpad/drive-spike.sh";
+  const TEXT = `! sudo bash ${PATH}`;
+  const LIST_ELSEWHERE = "The command list at the box pointed at another command, so Enter was not pressed.";
+  const rows = TYPED.split("\n");
+  const EDGE = rows[0]!;
+  const emptyScreen = [EDGE, "❯ ", EDGE].join("\n");
+  const probeScreen = [EDGE, `❯ ${PROBE}`, EDGE].join("\n");
+
+  /** A pane whose reads are the empty box, the probe in it, or `typed` once the box holds `text`. */
+  const replay = (text: string, typed: string): FakePane => {
+    const pane = new FakePane("claude");
+    pane.collapseOver = 100_000;
+    let entered = false;
+    pane.afterInput = (_p, what) => {
+      if (what === "keys:Enter") entered = true;
+    };
+    pane.beforeRead = (p) => {
+      if (entered || p.box === "") p.fixed = emptyScreen;
+      else if (p.box === PROBE) p.fixed = probeScreen;
+      else if (p.box === text) p.fixed = typed;
+      else throw new Error(`the pane never showed the box holding ${JSON.stringify(p.box)}`);
+    };
+    return pane;
+  };
+
+  test("the capture is the owner's screen: the box holds the line, and the one row under it points at the line's last word", () => {
+    expect(rows).toHaveLength(5);
+    expect(rows[0]).toMatch(/^─{40,}$/u);
+    expect(rows[1]).toBe("!  sudo bash");
+    expect(rows[2]).toBe(`  ${PATH}`);
+    expect(rows[3]).toBe(EDGE);
+    expect(rows[4]).toBe(`  ❯ ${PATH}`);
+    expect(TEXT).toHaveLength(120);
+    expect(TEXT.split(" ").at(-1)).toBe(PATH);
+  });
+
+  test("@oracle:requirement @req:BANG-PATH-1 a `!` line whose completion pointer is its own last word goes in with Enter, sent", async () => {
+    const pane = replay(TEXT, TYPED);
+    const answer = await rig({ pane, version: "2.1.319" }).send(TEXT, { mode: "command" });
+    expect(answer.receipt).toMatchObject({ profileStatus: "provisional", outcome: "sent" });
+    expect(answer.detail).not.toBe(LIST_ELSEWHERE);
+    expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+    expect(pane.keysSeen.filter((key) => key === "Enter")).toHaveLength(1);
+    expect(pane.keysSeen).not.toContain("Tab");
+    expect(pane.keysSeen).not.toContain("Escape");
+    // The line went in as typed: Enter on the completion row did not swap the path.
+    expect(pane.transcript.at(-1)).toBe(`> ${TEXT}`);
+  });
+
+  // Lab 2026-11-09, Claude Code 2.1.319 in tmux, 120 columns, and the owner's pane the same day: in bash
+  // mode Enter submits the line as typed and never takes the completion under the box. `! ls <dir>/subdir`
+  // under `❯ …ome-admin-…/lab-dir/subdir/` ran `ls <dir>/subdir`; `! ls <dir>/sub` under the same row ran
+  // `ls <dir>/sub` (No such file or directory). The owner's `! rm -rf /home/admin/projects/case-passport`
+  // under `❯ /home/admin/projects/case-passport/` ended typed_not_submitted (LIST_ELSEWHERE) before this.
+  /** One send of `text` over a typed screen of the owner's box with `box` as its rows and `under` under it. */
+  const sendOver = async (text: string, under: readonly string[], box: readonly string[] = [`!  ${text.slice(2)}`]) => {
+    const pane = replay(text, [EDGE, ...box, EDGE, ...under].join("\n"));
+    const answer = await rig({ pane, version: "2.1.319" }).send(text, { mode: "command" });
+    return { pane, answer };
+  };
+  const LAB_DIR = "/tmp/claude-1000/-home-admin-projects-lab/lab-dir";
+  const LONG = `/tmp/${"x".repeat(100)}`;
+  const SIBLING = PATH.replace("drive-spike.sh", "drive-spike2.sh");
+
+  describe("@oracle:requirement @req:BANG-PATH-ENTER a `!` line goes in with Enter whatever completion row stands under the box", () => {
+    test.each([
+      ["the owner's directory with a trailing slash", "! rm -rf /home/admin/projects/case-passport", ["  ❯ /home/admin/projects/case-passport/"], undefined],
+      ["the lab's directory under a `…`-cut pointer with a trailing slash", `! ls ${LAB_DIR}/subdir`, ["  ❯ …ome-admin-…/lab-dir/subdir/"], undefined],
+      ["the lab's prefix of that directory under the same pointer", `! ls ${LAB_DIR}/sub`, ["  ❯ …ome-admin-…/lab-dir/subdir/"], undefined],
+      ["a prefix whose pointer shows the whole file name", "! sudo bash /tmp/dri", ["  ❯ /tmp/drive-spike.sh"], undefined],
+      ["a pointer on a sibling file", TEXT, [`  ❯ ${SIBLING}`], ["!  sudo bash", `  ${PATH}`]],
+      ["a pointer on a path in the line that is not its last word", `${TEXT} --dry-run`, [`  ❯ ${PATH}`], ["!  sudo bash", `  ${PATH} --dry-run`]],
+      ["a pointer on a path with a space, read short at the space", "! cat /tmp/my", ["  ❯ /tmp/my file.sh"], undefined],
+      ["an absolute pointer that only ends the typed word", "! cat /a//tmp/x", ["  ❯ /tmp/x"], undefined],
+      ["a pointed path that goes on in a wrapped row", `! cat ${LONG}`, [`  ❯ ${LONG}`, "        y-continued.sh"], undefined],
+    ] as const)("%s: sent, Enter once, the line as typed", async (_name, text, under, box) => {
+      const { pane, answer } = await sendOver(text, under, box);
+      expect(answer.receipt).toMatchObject({ outcome: "sent" });
+      expect(answer.detail).not.toBe(LIST_ELSEWHERE);
+      expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+      expect(pane.keysSeen.filter((key) => key === "Enter")).toHaveLength(1);
+      expect(pane.keysSeen).not.toContain("Tab");
+      expect(pane.keysSeen).not.toContain("Escape");
+      expect(pane.transcript.at(-1)).toBe(`> ${text}`);
+    });
+  });
+});
+
+// The OMP path rule (`notForText`) is unchanged by the Claude fix: a path text whose last word is a bare
+// name, with the list's pointer on that name, is no path completion. Screens: tester 14's `/plan` capture
+// (omp 18.12.6, 120 columns), its box text and its pointer row swapped for this text and entry.
+describe("@oracle:requirement @req:BANG-PATH-7 OMP: a path text whose last word is a bare name keeps its behaviour", () => {
+  const FIXTURES = join(import.meta.dir, "fixtures");
+  const capture = (name: string): string => readFileSync(join(FIXTURES, `omp--v18-12-6-plan-on-${name}--w120.txt`), "utf8");
+  const TEXT = "~/proj/a.sh foo";
+
+  test("`~/proj/a.sh foo` with the pointer on `foo` under the box is not sent with Enter", async () => {
+    const empty = capture("empty");
+    const probe = empty.replace(/^╰─.*$/mu, `╰─ ${PROBE}`);
+    const typed = capture("slash-plan").replace(/^╰─ \/plan$/mu, `╰─ ${TEXT}`).replace(/^❯ 🗺 {2}plan .*$/mu, "❯ foo");
+    expect(typed).toContain(`\n╰─ ${TEXT}\n❯ foo\n`);
+    expect(TEXT).toMatch(/^\s*@?(?:~|\.{1,2}|\/[^\s/]+)\//u);
+    const pane = new FakePane("generic");
+    let entered = false;
+    pane.afterInput = (_p, what) => {
+      if (what === "keys:Enter") entered = true;
+    };
+    pane.beforeRead = (p) => {
+      if (entered) p.fixed = capture("slash-plan-sent");
+      else if (p.box === "") p.fixed = empty;
+      else if (p.box === PROBE) p.fixed = probe;
+      else if (p.box === TEXT) p.fixed = typed;
+      else throw new Error(`the screen never showed the box holding ${JSON.stringify(p.box)}`);
+    };
+    const answer = await rig({ pane, harness: "omp", version: "18.12.6" }).send(TEXT);
+    // The outcome on the base before the Claude fix (128759f7f), kept: the list is something that opened at the box.
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue", keys: ["probe", "Backspace"] });
+    expect(answer.receipt?.detail).toBe("Something opened at the box after the text was typed, so Enter was not pressed.");
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+});
+
+// Owner's decision, 2026-11-09 ("я не могу отправить команду", twice while a Claude turn ran): on Claude a
+// `!` shell line in a running turn is typed and entered, and Claude Code queues it. Live, Claude Code
+// 2.1.319 over Herdr, pane ss-form w4:p1, 120 columns: Enter on a box holding the line in a turn printed
+// the line verbatim with `  ctrl+q to send now` under it, the box showed `❯ Press up to edit queued
+// messages`, and the line ran after the turn. The screen after Enter is that pane's rows
+// (claude--v2319-bang-queued--w120.txt); the screens before it are the same spinner and footer around
+// the box, drawn here: the empty box, the probe in it and the typed line. The capture starts at the
+// queued line; the conversation above it, which a pane in a turn always shows and which the in-turn
+// compare reads (the rows above may only scroll), is drawn here too, the same on every screen.
+describe("Claude Code 2.1.319, a `!` shell line in a running turn is queued (owner, 2026-11-09)", () => {
+  const FIXTURES = join(import.meta.dir, "fixtures");
+  const QUEUED = readFileSync(join(FIXTURES, "claude--v2319-bang-queued--w120.txt"), "utf8").replace(/\n$/u, "");
+  const PATH = "/tmp/claude-1000/-home-admin-projects-ss-form/45649e85-9af7-4fcd-b8ab-dfb5bc6ee83a/scratchpad/drive-spike.sh";
+  const NEVER_HELD = "Collie does not queue this command during a turn. Send it when the turn ends.";
+  const queuedRows = QUEUED.split("\n");
+  const EDGE = queuedRows[7]!;
+  const SPIN = queuedRows.slice(4, 7);
+  const FOOT = queuedRows.slice(10);
+  const CONVERSATION = ["❯ run the drive spike once the build is green", "", "● Building the bundle first, then the spike.", "  The build takes about a minute.", ""];
+  const running = (box: readonly string[], under: readonly string[] = FOOT): string => [...CONVERSATION, ...SPIN, EDGE, ...box, EDGE, ...under].join("\n");
+  const afterEnter = (rows: readonly string[]): string => [...CONVERSATION, ...rows].join("\n");
+
+  /** A pane in a running turn: the empty box, the probe, `typed` once the box holds `text`, `queued` after Enter. */
+  const replay = (text: string, typed: string, queued: string): FakePane => {
+    const pane = new FakePane("claude");
+    pane.collapseOver = 100_000;
+    let entered = false;
+    pane.afterInput = (_p, what) => {
+      if (what === "keys:Enter") entered = true;
+    };
+    pane.beforeRead = (p) => {
+      if (entered) p.fixed = queued;
+      else if (p.box === "") p.fixed = running(["❯ "]);
+      else if (p.box === PROBE) p.fixed = running([`❯ ${PROBE}`]);
+      else if (p.box === text) p.fixed = typed;
+      else throw new Error(`the pane never showed the box holding ${JSON.stringify(p.box)}`);
+    };
+    return pane;
+  };
+
+  test("the screen after Enter is the owner's: the line, `ctrl+q to send now`, the spinner, the box's queued hint", () => {
+    expect(queuedRows).toHaveLength(12);
+    expect(queuedRows[0]).toBe("! sudo bash");
+    expect(queuedRows[1]).toBe(`  ${PATH}`);
+    expect(queuedRows[2]).toBe("  ctrl+q to send now");
+    expect(queuedRows[4]).toMatch(/^✻ Unfurling… \(43s/u);
+    expect(EDGE).toMatch(/^─{120}$/u);
+    expect(queuedRows[8]).toBe("❯ Press up to edit queued messages");
+    expect(queuedRows[9]).toBe(EDGE);
+  });
+
+  test("@oracle:requirement @req:BANG-QUEUE-1 `! git status` in a turn is typed and entered once, sent and queued", async () => {
+    const text = "! git status";
+    const typed = running(["!  git status"]);
+    const queued = afterEnter(["! git status", ...queuedRows.slice(2)]);
+    const pane = replay(text, typed, queued);
+    const answer = await rig({ pane, version: "2.1.319" }).send(text, { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+    expect(pane.keysSeen.filter((key) => key === "Enter")).toHaveLength(1);
+    neverEscape(pane);
+  });
+
+  test("@oracle:requirement @req:BANG-QUEUE-2 the owner's line over its own path completion row in a turn is sent and queued", async () => {
+    const text = `! sudo bash ${PATH}`;
+    const typed = running(["!  sudo bash", `  ${PATH}`], [`  ❯ ${PATH}`]);
+    const pane = replay(text, typed, afterEnter(queuedRows));
+    const answer = await rig({ pane, version: "2.1.319" }).send(text, { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+    expect(pane.keysSeen.filter((key) => key === "Enter")).toHaveLength(1);
+    neverEscape(pane);
+  });
+
+  test("@oracle:requirement @req:BANG-QUEUE-3 Claude's session commands stay refused in a turn, and `!` stays never-held on the other profiles", async () => {
+    const r = rig({ version: "2.1.319" });
+    r.pane.over = [LIVE_ROW];
+    for (const command of ["/clear", "/resume", "/exit", "/quit", "/logout", "/branch"]) {
+      const answer = await r.send(command, { mode: "command" });
+      expect(answer.receipt, command).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+      expect(answer.detail, command).toBe(NEVER_HELD);
+    }
+    expect(r.pane.calls).toEqual([]);
+    for (const harness of ["codex", "muse", "cursor", "kiro", "hermes"]) {
+      expect(neverHeldEntry("!git status", profileFor(harness, null, { log: () => undefined })), harness).toBe("!");
+    }
+  });
+});
+
+// Owner's direct-send acceptance, 2026-11-14, points 1–5. The oracle is the brief,
+// written before the implementation by a separate test author.
+describe("direct phone send for Claude and Codex (owner 2026-11-14)", () => {
+  for (const harness of ["claude", "codex"] as const) {
+    const options = harness === "codex" ? { mode: "codex" as const, harness, version: "0.169.0" } : {};
+    test(`${harness}: replaces a terminal draft, submits and creates no held row`, async () => {
+      const holds = new HoldStore(join(dir, "direct-held"));
+      const r = rig({ ...options, holds });
+      r.pane.box = "a previous Collie leftover";
+      const answer = await r.send("new phone message", { fromPhone: true });
+      expect(answer.receipt?.outcome).toBe("sent");
+      expect(answer.offers).toEqual([]);
+      expect(r.pane.box).toBe("");
+      expect(r.pane.transcript.at(-1)).toContain("new phone message");
+      expect(r.pane.transcript.at(-1)).not.toContain("leftover");
+      expect(holds.list()).toEqual([]);
+      neverEscape(r.pane);
+    });
+
+    test(`${harness}: a running turn submits in the same request without a hold or poll release`, async () => {
+      const holds = new HoldStore(join(dir, "direct-held"));
+      const r = rig({ ...options, holds });
+      if (harness === "codex") r.pane.over = ["• Working (4s • esc to interrupt)"];
+      else {
+        r.pane.over = ["✻ Wibbling… (4s · ↓ 304 tokens)"];
+        r.pane.drawsQueuedRow = true;
+      }
+      const answer = await r.send("follow up while working", { fromPhone: true });
+      expect(answer.receipt?.outcome).toBe("sent");
+      expect(answer.offers).toEqual([]);
+      expect(r.pane.keysSeen).toContain(harness === "codex" ? "Tab" : "Enter");
+      if (harness === "codex") {
+        expect(r.pane.keysSeen).not.toContain("Enter");
+        expect(r.pane.queued).toEqual(["follow up while working"]);
+      }
+      expect(r.pane.box).toBe("");
+      expect(holds.list()).toEqual([]);
+    });
+
+    test(`${harness}: a direct send bypasses an older Collie hold`, async () => {
+      const holds = new HoldStore(join(dir, "direct-held"));
+      holds.add({ id: "older-held-0001", session: "main", paneId: "%1", harness, mode: "send", text: "an older external request", revision: 1, command: false });
+      const r = rig({ ...options, holds });
+      const answer = await r.send("send this phone message now", { fromPhone: true });
+      expect(answer.receipt?.outcome).toBe("sent");
+      expect(r.pane.box).toBe("");
+      expect(r.pane.transcript.at(-1)).toContain("send this phone message now");
+      expect(holds.list().map((row) => row.id)).toEqual(["older-held-0001"]);
+    });
+
+    test(`${harness}: a modal at the box still refuses without typing or submit`, async () => {
+      const r = rig(options);
+      r.pane.dialog = DIALOG;
+      const answer = await r.send("please continue", { fromPhone: true });
+      expect(answer.receipt?.outcome).toBe("refused");
+      expect(r.pane.calls).toEqual([]);
+      expect(r.pane.keysSeen).not.toContain("Enter");
+      expect(r.pane.keysSeen).not.toContain("Tab");
+    });
+
+    test(`${harness}: a vanished input box never receives the submit key`, async () => {
+      const holds = new HoldStore(join(dir, "direct-held"));
+      const r = rig({ ...options, holds });
+      r.pane.fixed = "a transcript with no input box";
+      const answer = await r.send("please continue", { fromPhone: true });
+      expect(answer.receipt?.outcome).not.toBe("sent");
+      expect(answer.receipt?.outcome).not.toBe("held");
+      expect(r.pane.calls).toEqual([]);
+      expect(r.pane.keysSeen).toEqual([]);
+      expect(holds.list()).toEqual([]);
+    });
+  }
+
+  test("Claude: a compare mismatch after typing still submits the text", async () => {
+    const r = rig();
+    r.pane.dropLastChar = true;
+    const answer = await r.send("please send these words", { fromPhone: true });
+    expect(answer.receipt?.outcome).toBe("sent");
+    expect(answer.offers).toEqual([]);
+    expect(r.pane.keysSeen).toContain("Enter");
+    expect(r.pane.box).toBe("");
+  });
+
+  test("Codex: an idle box that swallowed the first Tab receives one more Tab", async () => {
+    const r = rig({ mode: "codex", harness: "codex", version: "0.169.0" });
+    let tabs = 0;
+    r.pane.beforeWrite = (_pane, what) => {
+      if (what === "keys:Tab" && ++tabs === 1) return Promise.resolve();
+    };
+    const answer = await r.send("long message after a paste", { fromPhone: true });
+    expect(answer.receipt?.outcome).toBe("sent");
+    expect(tabs).toBe(2);
+    expect(r.pane.box).toBe("");
+    expect(answer.offers).toEqual([]);
+  });
+
+  test("Codex: a box that keeps swallowing Tab is retried only once", async () => {
+    const r = rig({ mode: "codex", harness: "codex", version: "0.169.0" });
+    let tabs = 0;
+    r.pane.beforeWrite = (_pane, what) => {
+      if (what === "keys:Tab") {
+        tabs++;
+        return Promise.resolve();
+      }
+    };
+    const answer = await r.send("never loop on submit", { fromPhone: true });
+    expect(answer.receipt?.outcome).not.toBe("sent");
+    expect(tabs).toBe(2);
+  });
+
+  test("OMP: a phone send onto its draft keeps the refusal and draft", async () => {
+    const pane = new OmpPane();
+    const r = rig({ pane, harness: "omp", version: "18.12.6" });
+    pane.box = "the OMP draft";
+    const answer = await r.send("new phone words", { fromPhone: true });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
+    expect(pane.box).toBe("the OMP draft");
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("Claude: a non-phone send still refuses the existing draft", async () => {
+    const r = rig();
+    r.pane.box = "terminal draft";
+    const answer = await r.send("external caller");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
+    expect(r.pane.box).toBe("terminal draft");
+    expect(r.pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("Claude: a phone slash command keeps the draft refusal path", async () => {
+    const r = rig();
+    r.pane.box = "terminal draft";
+    const answer = await r.send("/model", { mode: "command", fromPhone: true });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
+    expect(r.pane.box).toBe("terminal draft");
+    expect(r.pane.keysSeen).not.toContain("Enter");
+  });
+});
+
+// Hard stops still dominate direct send even after the full text has been written.
+describe("direct send hard stops after typing (owner 2026-11-14)", () => {
+  for (const harness of ["claude", "codex"] as const) {
+    test(`${harness}: a modal that appears after typing blocks submit`, async () => {
+      const r = rig(harness === "codex" ? { mode: "codex", harness, version: "0.169.0" } : {});
+      r.pane.afterInput = (pane, what) => {
+        if (what.startsWith("paste:")) pane.dialog = DIALOG;
+      };
+      const answer = await r.send("send after checking the dialog", { fromPhone: true });
+      expect(answer.receipt?.outcome).not.toBe("sent");
+      expect(r.pane.keysSeen).not.toContain("Enter");
+      expect(r.pane.keysSeen).not.toContain("Tab");
+    });
+
+    test(`${harness}: a box that vanishes after typing blocks submit`, async () => {
+      const r = rig(harness === "codex" ? { mode: "codex", harness, version: "0.169.0" } : {});
+      r.pane.afterInput = (pane, what) => {
+        if (what.startsWith("paste:")) pane.fixed = "the input box disappeared";
+      };
+      const answer = await r.send("this text must not submit blindly", { fromPhone: true });
+      expect(answer.receipt?.outcome).not.toBe("sent");
+      expect(r.pane.keysSeen).not.toContain("Enter");
+      expect(r.pane.keysSeen).not.toContain("Tab");
+    });
+  }
+});
+
+// Direct sends must keep the S1 box boundary and the Codex retry boundary.
+describe("direct send redraw and retry boundaries (owner 2026-11-14)", () => {
+  test("Claude: rows redrawn under the box do not leave a typed draft", async () => {
+    const r = rig();
+    r.pane.afterInput = (pane, what) => {
+      if (what.startsWith("paste:")) pane.popup = ["  src/main.ts", "  src/other.ts"];
+    };
+    const answer = await r.send("look at main", { fromPhone: true });
+    expect(answer.receipt?.outcome).toBe("sent");
+    expect(r.pane.keysSeen).toContain("Enter");
+    expect(answer.offers).toEqual([]);
+  });
+
+  test("Claude: another screen after typing never receives Enter", async () => {
+    const r = rig();
+    r.pane.afterInput = (pane, what) => {
+      if (what.startsWith("paste:")) pane.status = ["  enter to return · Esc to close"];
+    };
+    const answer = await r.send("not for the agents screen", { fromPhone: true });
+    expect(answer.receipt?.outcome).not.toBe("sent");
+    expect(r.pane.keysSeen).not.toContain("Enter");
+  });
+
+  for (const afterSubmit of ["modal", "no box", "new turn"] as const) {
+    test(`Codex: no retry when the first submit is followed by ${afterSubmit}`, async () => {
+      const r = rig({ mode: "codex", harness: "codex", version: "0.169.0" });
+      let tabs = 0;
+      r.pane.beforeWrite = (pane, what) => {
+        if (what !== "keys:Tab") return;
+        tabs++;
+        if (afterSubmit === "modal") pane.dialog = DIALOG;
+        if (afterSubmit === "no box") pane.fixed = "input box is gone";
+        if (afterSubmit === "new turn") pane.over = ["• Working (4s • esc to interrupt)"];
+        return Promise.resolve();
+      };
+      await r.send("retry only in the idle input box", { fromPhone: true });
+      expect(tabs).toBe(1);
+    });
+  }
+});
+
+// Hard-stop answers cannot hand a legacy client an unsafe recovery action.
+describe("direct hard-stop replies offer no automatic submit (owner 2026-11-14)", () => {
+  for (const boundary of ["modal", "other screen", "no input box"] as const) {
+    test(`Claude: ${boundary} after typing never offers Submit or Replace`, async () => {
+      const r = rig();
+      r.pane.afterInput = (pane, what) => {
+        if (!what.startsWith("paste:")) return;
+        if (boundary === "modal") pane.dialog = DIALOG;
+        if (boundary === "other screen") pane.status = ["  enter to return · Esc to close"];
+        if (boundary === "no input box") pane.fixed = "no input box";
+      };
+      const answer = await r.send("keep the hard stop", { fromPhone: true });
+      expect(answer.receipt?.outcome).not.toBe("sent");
+      expect(answer.offers).not.toContain("submit");
+      expect(answer.offers).not.toContain("replace");
+      expect(r.pane.keysSeen).not.toContain("Enter");
+    });
+  }
+});
+
+// The direct-send brief applies to matching profiles and to the first line's
+// command route. A later slash-prefixed line remains part of the message body.
+describe("direct-send profile and multiline boundaries (owner 2026-11-14)", () => {
+  test("a phone send with no profile still sends normally to a bare shell", async () => {
+    const r = rig({ mode: "generic", harness: NO_PROFILE });
+    r.pane.fixed = "$ ";
+    const answer = await r.send("echo hello from the phone", { fromPhone: true });
+    expect(answer.receipt?.outcome).toBe("sent");
+    expect(answer.offers).toEqual([]);
+    expect(r.pane.keysSeen).toEqual(["Enter"]);
+    expect(r.pane.transcript.at(-1)).toBe("> echo hello from the phone");
+    expect(r.pane.box).toBe("");
+  });
+
+  test("Claude: a later slash-prefixed line stays message text while a draft is replaced", async () => {
+    const r = rig();
+    r.pane.box = "a previous Collie leftover";
+    const answer = await r.send("ordinary first line\n/model is text in this message", { fromPhone: true });
+    expect(answer.receipt?.outcome).toBe("sent");
+    expect(answer.offers).toEqual([]);
+    expect(r.pane.transcript.at(-1)).toBe("> ordinary first line /model is text in this message");
+    expect(r.pane.box).toBe("");
+    expect(r.pane.keysSeen).toContain("Enter");
+    neverEscape(r.pane);
   });
 });

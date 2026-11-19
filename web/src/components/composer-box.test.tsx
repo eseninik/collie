@@ -396,7 +396,7 @@ describe("Composer layout=box, the fullscreen editor", () => {
     fireEvent.change(field(), { target: { value: lines(5) } });
     expect(expand()).toBeNull();
     // A sixth line is past it.
-    await user.type(field(), "{Enter}six");
+    await user.type(field(), "{Shift>}{Enter}{/Shift}six");
     expect(expand()).not.toBeNull();
     // Back to five lines: inside the hysteresis row, it stays.
     await user.type(field(), "{Backspace}{Backspace}{Backspace}{Backspace}");

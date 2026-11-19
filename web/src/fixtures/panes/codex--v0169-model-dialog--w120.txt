@@ -1,0 +1,40 @@
+
+  >_ [1mOpenAI Codex[0;2m (v0.169.0)[0m
+     [2m/tmp/collie-codex169-probe[0m
+[2m  permissions: [0;1mYOLO mode[0m
+
+[2m  To get started, describe a task or try one of these commands:[0m
+
+  /init[2m - create an AGENTS.md file with instructions for Codex[0m
+  /status[2m - show current session configuration[0m
+  /permissions[2m - choose what Codex is allowed to do[0m
+  /model[2m - choose what model and reasoning effort to use[0m
+  /review[2m - review any changes and find issues[0m
+
+
+[1;2m› [0mUI capture only. Do not use tools or read or write files. Work out the decimal product of 958214776320193845761 and
+  384902715639812745063 by hand, check it using a second decomposition, and only then give the result.
+
+
+[2m• [0m368819469571838346957051895411624236227943
+
+[2m  Worked for 47s • 09:43
+[0m
+
+
+
+
+
+  [1mSelect Model and Effort[0m
+
+
+[1;7m› 1. GPT-6.1-Sol (current)  [0;7mLatest workhorse model for coding and everyday work.[1m
+[0m  2. GPT-6-Astra            [2mFrontier intelligence for the most demanding work.[0m
+  3. GPT-6.1 Terra          [2mGPT-6.1 Terra Codex model.[0m
+  4. GPT-6-Sol              [2mPrevious generation workhorse model.[0m
+  5. GPT-6-Luna             [2mFast and affordable model for easier tasks.[0m
+  6. GPT-5.6-Sol            [2mOlder generation workhorse model.[0m
+  7. GPT-5.6-Terra          [2mOlder balanced model for straightforward work.[0m
+  8. GPT-5.6-Luna           [2mOlder fast and efficient model.[0m
+
+  [1menter[0;2m select · [0;1mesc[0;2m back

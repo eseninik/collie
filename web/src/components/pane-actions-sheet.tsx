@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Icon } from "@/components/icons/icon";
 
 import { BottomSheet } from "@/components/ui/sheet";
@@ -42,6 +42,9 @@ interface PaneActionsSheetProps {
    * this device's own preference and writes nothing to the machine.
    */
   savedCopy?: boolean;
+  /** Rows the caller leads the list with, for acts only it can take: the large-screen sidebar's
+   *  Open here and Open beside. They act on this device's layout, so no write gate covers them. */
+  leading?: ReactNode;
   /** Fired after a successful rename so the parent can revalidate. The sheet also stamps a topology
    *  burst (lib/poll-intent.ts), so the label lands within a beat even when that read is early. */
   onRenamed: () => void;
@@ -232,6 +235,7 @@ export function PaneActionsSheet({
   conversation = false,
   agentViews,
   tricksStore: trickStore,
+  leading,
 }: PaneActionsSheetProps) {
   useLocale();
   // Whether this pane is pinned on this device, read live from the store so the row's word is right
@@ -447,6 +451,7 @@ export function PaneActionsSheet({
           types into no terminal, so a read-only device and a pane on a quiet machine can still pin. */}
       {mode === "actions" && pane && (
         <div className="mb-1 flex flex-col gap-1">
+          {leading}
           {onFind && (
             <ActionRow
               icon={<Icon name="find-in-pane" className="size-4 shrink-0 text-muted-foreground" />}

@@ -26,7 +26,7 @@ import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "../../
 import { ASK_ID, ASK_OUTCOMES, ASK_REASONS, type AskReceipt } from "../../web/src/lib/surface/ask.ts";
 import { MENU_SIGN_KINDS, type MenuSign } from "../../web/src/lib/surface/menu-sign.ts";
 import { ASK_CHANNELS } from "../../web/src/lib/surface/surface.ts";
-import { readSendCap, readSurfaceWords, RECEIPT_DETAIL_MAX, REQUEST_ID, SEND_LATES, SEND_MODES, SEND_OUTCOMES, SEND_REASONS, SEND_WORDS, type ReadMark, type SendMode, type SendReceipt, type SendStep } from "../../web/src/lib/surface/send.ts";
+import { readSendCap, readSurfaceWords, RECEIPT_DETAIL_MAX, REQUEST_ID, SEND_LATES, SEND_MODES, SEND_OUTCOMES, SEND_REASONS, SEND_WORDS, type ReadMark, type SendMode, type SendOffer, type SendReceipt, type SendStep } from "../../web/src/lib/surface/send.ts";
 import { SENT_MAX_LINE, sentLineOf } from "../secret-line.ts";
 
 /** How long a settled request is kept, so a retry after a long network gap still finds its receipt. */
@@ -76,6 +76,8 @@ export interface SendRecord {
    */
   readonly path?: "data" | "screen";
   readonly receipt?: SendReceipt;
+  /** The settled answer's actions, including field-specific restrictions, kept for an exact replay. */
+  readonly offers?: readonly SendOffer[];
 }
 
 export interface AcceptInput {
@@ -131,6 +133,7 @@ const ASK_FILE = /^ask\.(ask-[0-9a-f]{14})\.json$/;
 
 const PHASES = ["accepted", "submit-sent", "settled", "held"] as const;
 const PROFILE_STATUSES = ["verified", "provisional", "revoked"] as const;
+const OFFERS = ["append", "replace", "cancel", "submit", "discard", "commit", "keys"] as const satisfies readonly SendOffer[];
 /** The longest `binary` path a stored receipt keeps; a longer one is dropped. */
 const RECEIPT_BINARY_MAX = 4_096;
 const STEPS = ["profile", "settle", "s0", "proof", "clear", "probe", "probeWrite", "write", "s1", "commandSettle", "commit", "s2"] as const;
@@ -291,6 +294,8 @@ export function parseSendRecord(raw: JsonValue | undefined): SendRecord | null {
     if (receipt === undefined) return null;
     record = { ...record, receipt };
   }
+  const offers = Array.isArray(node.offers) ? node.offers.map((offer) => pick(offer, OFFERS)) : undefined;
+  if (offers !== undefined && offers.every((offer) => offer !== undefined)) record = { ...record, offers };
   return record;
 }
 
@@ -556,11 +561,12 @@ export class RequestStore {
   }
 
   /** The request's end: its receipt. A settled record changes once at most after this (`markEffective`, `markReturned`, or `markArrived`). */
-  settle(id: string, receipt: SendReceipt): SendRecord | null {
+  settle(id: string, receipt: SendReceipt, offers?: readonly SendOffer[]): SendRecord | null {
     const known = this.get(id);
     if (known === null) return null;
     if (known.phase === "settled") return known;
-    const settled: SendRecord = { ...known, phase: "settled", receipt };
+    let settled: SendRecord = { ...known, phase: "settled", receipt };
+    if (offers !== undefined) settled = { ...settled, offers };
     this.write(settled);
     return settled;
   }

@@ -1364,25 +1364,29 @@ they are part of the content stream rather than chrome.
 
 ## Enter sends
 
-> **Note.** Enter stays a new line until you turn **Enter sends** on. Nothing changes by itself.
+> **Note.** This local build sends ordinary Claude and Codex messages with Enter on either
+> keyboard. It does so even with **Enter sends** off. **Shift+Enter** adds a new line.
 
-To make Enter send the message, open **Settings → Appearance → Enter sends** and turn it on. The
-choice is stored per device and never leaves it.
+When Enter sends a reply from the on-screen keyboard, Collie closes the keyboard.
 
-With the switch on, a physical keyboard's Enter sends the message and **Shift+Enter** adds a new
-line. The on-screen keyboard's Enter always adds a new line, so a tap on a phone never sends by
-mistake. Use the Send button there. **Ctrl+Enter** and **Cmd+Enter** send with the switch on or
-off, and they always did.
+For commands and other agents, open **Settings → Appearance → Enter sends** to change what a
+physical keyboard's Enter does. The local build starts with the switch on when the device has no
+stored choice. Collie stores your choice on that device.
+
+With the switch on, a physical keyboard's Enter sends the reply and **Shift+Enter** adds a new
+line. For replies that follow the setting, the on-screen keyboard's Enter adds a new line. Use
+the Send button there. **Ctrl+Enter** and **Cmd+Enter** send with the switch on or off.
 
 The reply box of a durable agent follows the same switch. The full-screen editor, which opens from
 **Expand** for long text, keeps Ctrl+Enter and Cmd+Enter only, so Enter there is always a new line.
 
-Collie reads each Enter press to tell the two keyboards apart. A press counts as a physical
-keyboard's only when it names the Enter or numpad Enter key, no input method is composing text, the
-key is not held down, and the on-screen keyboard is not up. Any doubt leaves the new line.
+When the setting applies, Collie reads each Enter press to tell the two keyboards apart. A press
+counts as a physical keyboard's only when it names the Enter or numpad Enter key, no input method
+is composing text, the key is not held down, and the on-screen keyboard is not up. Any doubt
+leaves the new line.
 
-The first time Collie sees an Enter press from a real keyboard and you have not chosen, that Enter
-still adds its new line, and one line above the reply box says "Using a keyboard? Enter can send."
+When the build has no default and you have not chosen, the first physical Enter still adds a new
+line. Collie shows "Using a keyboard? Enter can send." above the reply box.
 **Turn on** switches it on. The close button switches it off. Either way the line does not come back
 on this device, and **Enter sends** in Settings still changes the choice.
 

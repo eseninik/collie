@@ -5,7 +5,7 @@
 // stranded draft and a settle wait before Enter. All of it lived on the phone because the bridge's old
 // reply route typed, waited a fixed 350 ms and pressed Enter blind. The bridge now runs the Send
 // Protocol on every text (bridge/surface/protocol.ts): it reads the screen fresh at S0, refuses a
-// dialog, a draft or a screen it cannot read before any key, probes where it must, checks the box
+// dialog or a screen it cannot read before any key, replaces drafts on direct phone sends, checks the box
 // before Enter and answers with a receipt. So the phone reads nothing before a send and sends no key
 // of its own. What remains here is the request id, the call and the outcome mapping.
 //
@@ -19,11 +19,19 @@ import { t } from "./i18n";
 import { isLive } from "./liveness";
 import type { Scope } from "./scope";
 import { isCommand, readSend, type SendReading, type SendReply } from "./send-protocol";
+import { directSendProfile } from "./surface/profiles/direct-send";
 import type { SendMode, SendRequestBody, SendWhen } from "./surface/send";
 import { mintRequestId } from "./worktree-name";
 
+/** A lost automatic recovery resumes its own request id, rather than repeating the initial send. */
+export interface ReplyIntent extends IntentId {
+  readonly recovery?: { readonly originalKey: string; readonly mode: "replace" | "submit"; readonly rowsHash: string | null };
+}
+
 export interface ReplyArgs {
   readonly paneId: string;
+  /** Resolved profile id: direct-send recovery is limited to the owner's selected profiles. */
+  readonly profileId?: string | undefined;
   readonly text: string;
   /** Which machine and which named session the pane lives in. */
   readonly scope?: Scope | undefined;
@@ -38,7 +46,7 @@ export interface ReplyArgs {
   /** M69: `steer` takes the text into the running turn. Absent is today's send, queued during a turn. */
   readonly when?: SendWhen | undefined;
   /** The intent the last tap left without an answer: the same intent keeps its request id. */
-  readonly held: IntentId | null;
+  readonly held: ReplyIntent | null;
   /** Test seam for the request id. */
   readonly mint?: () => string;
   /**
@@ -67,7 +75,7 @@ export type ReplyOutcome =
    * back: the next tap on the same text asks for the same request id, so a lost answer never sends
    * twice.
    */
-  | { readonly status: "noAnswer"; readonly error: string; readonly intent: IntentId }
+  | { readonly status: "noAnswer"; readonly error: string; readonly intent: ReplyIntent }
   /**
    * Nothing was asked: the bridge has not answered a read for this pane lately (M46 spec 11), so the
    * screen the person acted on may be old. No queue and no retry: a person sends again once the pane
@@ -86,8 +94,49 @@ export function modeFor(text: string): SendMode {
   return isCommand(text) ? "command" : "send";
 }
 
-/** One Send Protocol request for a text, and what its answer means. Never throws. */
+/**
+ * Direct messages consume old-bridge recovery offers without showing a second Send action.
+ * Each recovery mode runs at most once, in order. A cap or a hard stop never authorises a key.
+ */
 export async function sendText(args: ReplyArgs): Promise<ReplyOutcome> {
+  const mode = args.mode ?? modeFor(args.text);
+  const direct = directSendProfile(args.profileId) && mode === "send" && !isCommand(args.text) && args.when !== "steer" && args.secret !== true && args.view === undefined && args.override !== true;
+  const recovery = direct && args.held?.recovery?.originalKey === sendIntentKey(args) ? args.held.recovery : undefined;
+  const resumed = recovery === undefined ? args : { ...args, mode: recovery.mode, rowsHash: recovery.rowsHash };
+  let result = await sendRequest(resumed);
+  if (!direct) return result;
+  if (result.status === "noAnswer" && recovery !== undefined) return { ...result, intent: { ...result.intent, recovery } };
+  for (const follow of ["replace", "submit"] as const) {
+    // A resumed step has already spent its own attempt; only the following step may run.
+    if (recovery?.mode === "submit" || (recovery?.mode === "replace" && follow === "replace")) continue;
+    if (result.status !== "answered") return result;
+    const { reply, reading } = result;
+    if (reading.clear || reply.cap !== null || reading.toCard || reply.reason === "modal_cue" || reply.reason === "pane_gone" || reply.reason === "dialog_open" || reply.reason === "unreadable") return result;
+    // Older bridges report another screen or a missing box as changed, with their own detail.
+    // Only an unexplained compare/redraw change may be recovered automatically.
+    if (reply.reason === "changed" && (reply.detail !== null || reply.surface?.composer === "unknown" || reply.surface?.composer === "unreachable")) return result;
+    if (!reply.offers.includes(follow)) continue;
+    const rowsHash = reply.rowsHash;
+    result = await sendRequest({ ...args, mode: follow, rowsHash, capAck: false, held: null });
+    if (result.status === "noAnswer") return { ...result, intent: { ...result.intent, recovery: { originalKey: sendIntentKey(args), mode: follow, rowsHash } } };
+  }
+  return result;
+}
+
+/** Every request and its recovery compare intent by this same key. */
+function sendIntentKey(args: ReplyArgs): string {
+  const mode = args.mode ?? modeFor(args.text);
+  const rowsHash = args.rowsHash ?? null;
+  const capAck = args.capAck === true;
+  const override = args.override === true && rowsHash !== null && args.secret !== true;
+  const viewKey = args.view === undefined ? "" : JSON.stringify(args.view);
+  // A sign-in code stays in its field and never enters a persisted intent key.
+  const textKey = args.secret === true ? "\u0001secret" : args.text;
+  return `${mode}\u0000${rowsHash ?? ""}\u0000${capAck ? "cap" : ""}\u0000${override ? "override" : ""}\u0000${args.resendOf ?? ""}\u0000${args.when ?? ""}\u0000${viewKey}\u0000${textKey}`;
+}
+
+/** One request with its own id. A lost answer retries this intent, never a raw submit key. */
+async function sendRequest(args: ReplyArgs): Promise<ReplyOutcome> {
   // The backstop behind every disabled Send: a UI that slipped through (a stale render, a handler held
   // across an outage) still cannot reach the bridge from a pane it has not just read.
   if (!isLive(args.paneId, args.scope)) {
@@ -99,12 +148,7 @@ export async function sendText(args: ReplyArgs): Promise<ReplyOutcome> {
   const override = args.override === true && rowsHash !== null && args.secret !== true;
   // The extra confirm is its own intent: it must not replay the commit the cap refused.
   const resendOf = args.resendOf;
-  const viewKey = args.view === undefined ? "" : JSON.stringify(args.view);
-  // A sign-in code never enters the intent's key: the composer keeps a code's lost intent in memory for the next tap,
-  // and the code itself is kept nowhere but its field. The composer drops that intent whenever the field's text
-  // changes, so the text is bound there, not here (the M102 review 2, D).
-  const textKey = args.secret === true ? "\u0001secret" : args.text;
-  const intent = requestIdFor(args.held, `${mode}\u0000${rowsHash ?? ""}\u0000${capAck ? "cap" : ""}\u0000${override ? "override" : ""}\u0000${resendOf ?? ""}\u0000${args.when ?? ""}\u0000${viewKey}\u0000${textKey}`, args.mint ?? mintRequestId);
+  const intent = requestIdFor(args.held, sendIntentKey(args), args.mint ?? mintRequestId);
   const body: SendRequestBody = args.view === undefined ? { id: intent.requestId, pane: args.paneId, text: args.text, mode } : { id: intent.requestId, pane: args.paneId, text: args.text, mode, view: args.view };
   try {
     const reply = await postSend({ ...body, rowsHash: rowsHash ?? undefined, capAck: capAck ? true : undefined, resendOf, when: args.when, secret: args.secret === true ? true : undefined, override: override ? true : undefined }, args.scope);

@@ -354,7 +354,7 @@ describe("composer taps: held rows while the launch starts (fix 6)", () => {
   const ended: HeldRow = { ...typed, requestId: "req00002", outcome: "expired" };
 
   it("no tap vanishes: Submit, Discard and Resend are off while starting, with the box off and saying Starting", () => {
-    mount({ held: [typed], starting: true });
+    mount({ agent: "muse", held: [typed], starting: true });
     expect(field()).not.toBeDisabled();
     expect(field()).toHaveAttribute("readonly");
     expect(field()).toHaveAttribute("aria-disabled", "true");
@@ -362,12 +362,12 @@ describe("composer taps: held rows while the launch starts (fix 6)", () => {
     expect(screen.getByRole("button", { name: "Submit the text in the box" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Discard the text in the box" })).toBeDisabled();
     cleanup();
-    mount({ held: [ended], starting: true });
+    mount({ agent: "muse", held: [ended], starting: true });
     expect(screen.getByRole("button", { name: "Resend the message" })).toBeDisabled();
   });
 
   it("no tap vanishes: once the launch is over the same buttons are live", () => {
-    mount({ held: [typed] });
+    mount({ agent: "muse", held: [typed] });
     expect(screen.getByRole("button", { name: "Submit the text in the box" })).toBeEnabled();
   });
 });

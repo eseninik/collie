@@ -38,7 +38,8 @@ function StatusProbe() {
 function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}) {
   const props: ComponentProps<typeof Composer> = {
     paneId: "w1:p1",
-    agent: "claude",
+    // Muse retains upstream held cards; ordinary Claude/Codex phone sends are direct.
+    agent: "muse",
     isShell: false,
     gone: false,
     readOnly: false,
@@ -630,6 +631,7 @@ describe("the held-send card floats", () => {
     document.body.append(slot);
     try {
       renderComposer({
+        agent: "pi",
         draftNoticeSlot: slot,
         terminalDraft: "typed in the terminal",
         rawTerminalDraft: "typed in the terminal",
@@ -670,7 +672,7 @@ function renderChangingQueue(initialCount: number) {
         <input data-testid="pane-control" defaultValue="w1:p1" onChange={(e) => setPaneId(e.target.value)} />
         <Composer
           paneId={paneId}
-          agent="claude"
+          agent="muse"
           isShell={false}
           gone={false}
           readOnly={false}

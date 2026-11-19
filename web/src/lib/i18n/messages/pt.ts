@@ -187,7 +187,7 @@ export const pt: Dictionary = {
     "Automático mostra a barra lateral e as colunas do painel em uma tela com pelo menos 600 px de largura e 480 px de altura. Desativado mantém o layout de telefone em qualquer lugar.",
   "settings.enterSends.title": "Enter envia",
   "settings.enterSends.hint":
-    "Com um teclado físico, Enter envia a mensagem e Shift+Enter adiciona uma nova linha. Com o teclado na tela, Enter sempre adiciona uma nova linha.",
+    "Com um teclado físico, Enter envia a mensagem e Shift+Enter adiciona uma linha. Mensagens comuns para Claude e Codex são enviadas com Enter nos dois teclados, mesmo com esta opção desativada.",
   "settings.paneNav.title": "Navegação por painéis",
   "settings.paneNav.twoFingers": "Dois dedos",
   "settings.paneNav.joystick": "Joystick",
@@ -1593,6 +1593,7 @@ export const pt: Dictionary = {
   "connection.stale.messageTemplate": "{reason}. {detail}",
   "connection.session.title": "Espaços",
   "connection.session.aria": "Espaço: {name}. Alternar espaço",
+  "connection.session.moveAria": "Mover {name}",
   "connection.session.primary": "primário",
   "connection.session.unreachable": "inacessível",
   "connection.session.ariaIn": "No espaço: {name}",

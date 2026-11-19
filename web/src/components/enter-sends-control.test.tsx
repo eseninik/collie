@@ -17,7 +17,7 @@ describe("EnterSendsControl", () => {
     render(<EnterSendsControl />);
     const sw = screen.getByRole("switch", { name: "Enter sends" });
     expect(sw).not.toBeChecked();
-    expect(screen.getByText(/Enter always adds a new line/)).toBeInTheDocument();
+    expect(screen.getByText(/Ordinary Claude and Codex messages use Enter on either keyboard, even with this setting off\./u)).toBeInTheDocument();
     await user.click(sw);
     expect(sw).toBeChecked();
     expect(enterSendsChoice()).toBe("on");

@@ -119,7 +119,7 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
       { body: { receipt: receipt("refused", "draft_present"), offers: ["append", "replace", "cancel"] } },
       { body: { receipt: receipt("sent"), offers: [] } },
     ]);
-    renderComposer();
+    renderComposer({ agent: "pi" });
     await user.type(screen.getByPlaceholderText(/type a reply/i), "new words");
     await user.click(screen.getByRole("button", { name: "Send" }));
     const strip = await screen.findByTestId("send-offers");
@@ -137,7 +137,7 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
   it("a draft refusal on a pane with a returned queued card points at that card, and keeps the offers (ADR 0122)", async () => {
     const user = userEvent.setup();
     bridge([{ body: { receipt: receipt("refused", "draft_present"), offers: ["append", "replace", "cancel"] } }]);
-    renderComposer({ returnedDraft: true });
+    renderComposer({ agent: "pi", returnedDraft: true });
     await user.type(screen.getByPlaceholderText(/type a reply/i), "new words");
     await user.click(screen.getByRole("button", { name: "Send" }));
     expect(await screen.findByText("Your queued message is back in the agent as a draft. Use its card.")).toBeInTheDocument();
@@ -171,7 +171,7 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
       { body: { receipt: receipt("refused", "draft_present"), offers: ["append", "replace", "cancel"] } },
       { body: { receipt: receipt("sent"), offers: [] } },
     ]);
-    renderComposer();
+    renderComposer({ agent: "pi" });
     await user.type(screen.getByPlaceholderText(/type a reply/i), "more words");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await user.click(await screen.findByRole("button", { name: "Add to it" }));
@@ -185,7 +185,7 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
       { body: { receipt: receipt("refused", "unconfirmed"), offers: ["commit", "keys"], rowsHash: "0abc12" } },
       { body: { receipt: receipt("sent"), offers: [] } },
     ]);
-    renderComposer();
+    renderComposer({ agent: "pi" });
     await user.type(screen.getByPlaceholderText(/type a reply/i), "go ahead");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await user.click(await screen.findByRole("button", { name: "Send anyway" }));
@@ -202,7 +202,7 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
       { body: { receipt: receipt("typed_not_submitted", "changed"), offers: ["submit", "discard", "keys"] } },
       { body: { receipt: receipt("discarded"), offers: [] } },
     ]);
-    renderComposer();
+    renderComposer({ agent: "pi" });
     await user.type(screen.getByPlaceholderText(/type a reply/i), "half way");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await user.click(await screen.findByRole("button", { name: "Discard" }));
