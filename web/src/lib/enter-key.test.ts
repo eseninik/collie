@@ -89,6 +89,28 @@ describe("enterKeyAnswer", () => {
     expect(enterKeyAnswer({ ...HARDWARE, ...facts }, softKeyboardUp, choice)).toBe(answer);
   });
 
+  // Owner's decision in the Collie 1.30.0 post-review brief, item 3.
+  describe.each([
+    { modifier: "Ctrl", key: { ctrlKey: true } },
+    { modifier: "Cmd", key: { metaKey: true } },
+  ])("$modifier+Enter @oracle:requirement @req:PORT-1300-ENTER-MODIFIERS", ({ key }) => {
+    it.each([
+      { name: "direct and composing", facts: { isComposing: true }, direct: true, answer: "default" },
+      { name: "direct with Shift", facts: { shiftKey: true }, direct: true, answer: "default" },
+      { name: "direct without Shift or composition", facts: {}, direct: true, answer: "send" },
+      { name: "non-direct and composing", facts: { isComposing: true }, direct: false, answer: "send" },
+      { name: "non-direct with Shift", facts: { shiftKey: true }, direct: false, answer: "send" },
+      { name: "non-direct without Shift or composition", facts: {}, direct: false, answer: "send" },
+    ])("$name", ({ facts, direct, answer }) => {
+      expect(enterKeyAnswer({ ...HARDWARE, ...key, ...facts }, false, "off", direct)).toBe(answer);
+    });
+  });
+
+  it("sends a direct message on Ctrl+Enter with code 229 after composition @oracle:requirement @req:PORT-1300-DIRECT-ENTER-229", () => {
+    const key = { ...HARDWARE, ctrlKey: true, keyCode: 229, isComposing: false };
+    expect(enterKeyAnswer(key, false, "off", true)).toBe("send");
+  });
+
   // The operator's rule (2026-11-19): a guess never changes what Enter does. With nothing stored, no
   // combination of facts may answer "send" for a bare Enter, whatever the device looks like.
   it("never sends a bare Enter while nothing is stored", () => {

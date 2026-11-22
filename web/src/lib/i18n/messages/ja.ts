@@ -170,7 +170,7 @@ export const ja: Dictionary = {
     "「自動」にすると、幅が 600 px 以上かつ高さが 480 px 以上ある画面でサイドバーとペインの列を表示します。「オフ」にすると、すべての画面でスマートフォン用レイアウトを維持します。",
   "settings.enterSends.title": "Enter で送信",
   "settings.enterSends.hint":
-    "物理キーボードでは、Enter でメッセージを送信し、Shift+Enter で改行します。画面上のキーボードでは、Enter は常に改行です。",
+    "物理キーボードでは、Enter でメッセージを送信し、Shift+Enter で改行します。Claude と Codex への通常のメッセージは、この設定をオフにしても、どちらのキーボードでも Enter で送信できます。",
   "settings.projectPictures.title": "プロジェクト画像",
   "settings.projectPictures.hint":
     "リポジトリの collie.toml が指定する画像を、エージェントのロゴの代わりに表示します（ロゴは角に表示）。プッシュ通知のアイコンにも使います。",
@@ -1655,6 +1655,7 @@ export const ja: Dictionary = {
   "connection.stale.messageTemplate": "{reason}。{detail}",
   "connection.session.title": "Space",
   "connection.session.aria": "Space: {name}。Spaceを切り替え",
+  "connection.session.moveAria": "{name} を移動",
   "connection.session.primary": "プライマリ",
   "connection.session.unreachable": "到達不能",
   "connection.session.ariaIn": "現在のSpace: {name}",

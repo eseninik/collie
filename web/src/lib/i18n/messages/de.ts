@@ -183,7 +183,7 @@ export const de: Dictionary = {
     "Automatisch zeigt die Seitenleiste und Pane-Spalten auf einem Bildschirm an, der mindestens 600 px breit und 480 px hoch ist. Aus behält das Telefon-Layout überall bei.",
   "settings.enterSends.title": "Enter sendet",
   "settings.enterSends.hint":
-    "Mit einer physischen Tastatur sendet Enter die Nachricht und Umschalt+Enter fügt eine neue Zeile ein. Mit der Bildschirmtastatur fügt Enter immer eine neue Zeile ein.",
+    "Mit einer physischen Tastatur sendet Enter die Nachricht und Umschalt+Enter fügt eine neue Zeile ein. Normale Nachrichten an Claude und Codex lassen sich mit Enter auf beiden Tastaturen senden, auch wenn diese Einstellung aus ist.",
   "settings.projectPictures.title": "Projektbilder",
   "settings.projectPictures.hint":
     "Zeigt das Bild, das ein Repository in seiner collie.toml nennt, statt des Agent-Logos, mit dem Logo in der Ecke und als Icon seiner Push-Benachrichtigungen.",
@@ -1676,6 +1676,7 @@ export const de: Dictionary = {
   "connection.stale.messageTemplate": "{reason}. {detail}",
   "connection.session.title": "Spaces",
   "connection.session.aria": "Space: {name}. Space wechseln",
+  "connection.session.moveAria": "{name} verschieben",
   "connection.session.primary": "primär",
   "connection.session.unreachable": "nicht erreichbar",
   "connection.session.ariaIn": "In Space: {name}",

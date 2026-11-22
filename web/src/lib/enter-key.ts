@@ -1,13 +1,11 @@
 // What a press of Enter does in the reply box (ADR 0157, which changes one sentence of ADR 0057).
 //
-// The question is asked per KEY PRESS, never per device: no web API says "a physical keyboard is
-// attached", so each press has to show where it came from. The rule only ever errs one way. When any
-// sign is missing or odd, Enter stays what the browser makes it, a new line, and a message is never
-// sent by a key that might have come from a phone's on-screen keyboard.
+// An ordinary Claude or Codex message in the local reply box can send from either keyboard.
+// For other replies, each press has to show that it came from a physical keyboard before
+// the device's Enter sends setting applies.
 //
-// A GUESS NEVER CHANGES WHAT ENTER DOES; ONLY THE PERSON'S TAP DOES. Nothing stored means Enter is a
-// new line on every device, a computer with a mouse included. The first press that looks like a real
-// keyboard's earns the person one offer of the switch (`hint`); the switch is the choice.
+// A GUESS NEVER CHANGES THE SETTING. With no effective choice, a press from a real keyboard earns
+// the person one offer of the switch (`hint`). The key still adds a line.
 //
 // Pure on purpose: no DOM types and no state of its own, so the table test can read every row. The
 // test of one press that no input method made, with a physical key's `code`, is lib/hardware-keyboard.ts's.
@@ -48,26 +46,27 @@ const HARDWARE_ENTER_CODES: ReadonlySet<string> = new Set(["Enter", "NumpadEnter
 
 /**
  * What a keydown does. `softKeyboardUp` is the app's own height test (hooks/use-keyboard.ts) and
- * `choice` is the per-device setting (lib/enter-sends-store.ts).
+ * `choice` is the per-device setting (lib/enter-sends-store.ts). The terminal reply box opts
+ * ordinary messages on direct profiles into Enter from either keyboard.
  */
-export function enterKeyAnswer(facts: EnterKeyFacts, softKeyboardUp: boolean, choice: EnterChoice): EnterAnswer {
+export function enterKeyAnswer(
+  facts: EnterKeyFacts,
+  softKeyboardUp: boolean,
+  choice: EnterChoice,
+  directMessage = false,
+): EnterAnswer {
   if (facts.key !== "Enter") return "default";
-  // Ctrl+Enter and Cmd+Enter always send, with the setting on, off or never chosen. They are older than it.
-  if (facts.ctrlKey || facts.metaKey) return "send";
-  // Shift+Enter and Alt+Enter are the person asking for a new line.
-  if (facts.shiftKey || facts.altKey) return "default";
-  if (choice === "off") return "default";
-  if (!fromRealKeyboard(facts, softKeyboardUp)) return "default";
+  if (directMessage && (facts.shiftKey || facts.isComposing)) return "default";
+  // A held send shortcut cannot confirm a line that asks for a second press.
+  if (directMessage || facts.ctrlKey || facts.metaKey) return facts.repeat ? "swallow" : "send";
+  if (facts.shiftKey || facts.altKey || choice === "off" || !fromRealKeyboard(facts, softKeyboardUp)) return "default";
   if (choice === "on") return facts.repeat ? "swallow" : "send";
-  // Never chosen: the first press of a real keyboard earns the offer. A repeat is a held key, not a new press.
   return facts.repeat ? "default" : "hint";
 }
 
 /**
- * Whether a bare Enter looks like a physical keyboard's. Every sign must hold, and any doubt says no.
- * Composition is checked twice: Safari can report the confirming Enter after the composition has ended,
- * with keyCode 229 only. A key that names no hardware Enter code, or any press while the on-screen
- * keyboard is up (iOS may fill `code` in), is not trusted.
+ * Whether a bare Enter looks like a physical keyboard's. An on-screen key may fill in code,
+ * so also check whether the on-screen keyboard is up.
  */
 function fromRealKeyboard(facts: EnterKeyFacts, softKeyboardUp: boolean): boolean {
   if (!isHardwareKeyPress(facts)) return false;

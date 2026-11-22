@@ -15,8 +15,8 @@
 // Safari private mode throws on setItem), with a memory map beside it for a page whose storage is
 // blocked. A lost id costs only the old behaviour (a new id), never a failed send.
 
-import type { IntentId } from "./durable-control";
-import { asJsonString, parseJsonObject } from "./json";
+import type { ReplyIntent } from "./reply-action";
+import { asJsonObject, asJsonString, parseJsonObject } from "./json";
 import { normalizeScope, type Scope } from "./scope";
 
 const PREFIX = "collie:send-intent:";
@@ -26,6 +26,7 @@ interface Stored {
   readonly requestId: string;
   /** The text of the draft that went, or null when the send was not the draft (a tap on an offer or a held row). */
   readonly draft: string | null;
+  readonly recovery?: ReplyIntent["recovery"];
 }
 
 const memory = new Map<string, Stored>();
@@ -49,7 +50,15 @@ function parse(raw: string | null): Stored | null {
   const key = asJsonString(value?.key);
   const requestId = asJsonString(value?.requestId);
   if (key === undefined || requestId === undefined) return null;
-  return { key, requestId, draft: asJsonString(value?.draft) ?? null };
+  const stored: Stored = { key, requestId, draft: asJsonString(value?.draft) ?? null };
+  const recovery = asJsonObject(value?.recovery);
+  const originalKey = asJsonString(recovery?.originalKey);
+  const mode = asJsonString(recovery?.mode);
+  const rowsHash = recovery?.rowsHash;
+  if (originalKey !== undefined && (mode === "replace" || mode === "submit") && (rowsHash === null || asJsonString(rowsHash) !== undefined)) {
+    return { ...stored, recovery: { originalKey, mode, rowsHash: asJsonString(rowsHash) ?? null } };
+  }
+  return stored;
 }
 
 function read(scope: Scope | undefined, paneId: string): Stored | null {
@@ -64,15 +73,18 @@ function read(scope: Scope | undefined, paneId: string): Stored | null {
 }
 
 /** The intent a pane's last send left without an answer, or null. */
-export function loadIntent(scope: Scope | undefined, paneId: string): IntentId | null {
+export function loadIntent(scope: Scope | undefined, paneId: string): ReplyIntent | null {
   const stored = read(scope, paneId);
-  return stored === null ? null : { key: stored.key, requestId: stored.requestId };
+  if (stored === null) return null;
+  const intent: ReplyIntent = { key: stored.key, requestId: stored.requestId };
+  return stored.recovery === undefined ? intent : { ...intent, recovery: stored.recovery };
 }
 
 /** Remember the intent of a send that got no answer. `draft` is the draft's text when the send carried it. */
-export function saveIntent(scope: Scope | undefined, paneId: string, intent: IntentId, draft: string | null): void {
+export function saveIntent(scope: Scope | undefined, paneId: string, intent: ReplyIntent, draft: string | null): void {
   const key = keyFor(scope, paneId);
-  const stored: Stored = { key: intent.key, requestId: intent.requestId, draft };
+  let stored: Stored = { key: intent.key, requestId: intent.requestId, draft };
+  if (intent.recovery !== undefined) stored = { ...stored, recovery: intent.recovery };
   memory.set(key, stored);
   try {
     storage()?.setItem(key, JSON.stringify(stored));

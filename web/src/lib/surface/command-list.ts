@@ -66,6 +66,12 @@ function listPatterns(list: CommandListRows): CompiledCommandList {
   return compiled;
 }
 
+/** Whether Enter under `text` submits it as typed (`notForTextEnterTypes`): no row under the box is ever picked. */
+export function enterTypesText(list: CommandListRows | undefined, text: string): boolean {
+  if (list === undefined || list.notForTextEnterTypes !== true) return false;
+  return opensNoList(listPatterns(list), text);
+}
+
 /** Whether the profile says the box's `text` opens no command list (`notForText`): another popup stands under it. */
 function opensNoList(patterns: CompiledCommandList, text: string | undefined): boolean {
   return text !== undefined && patterns.notForText !== null && patterns.notForText.test(text);

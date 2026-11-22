@@ -82,7 +82,9 @@ const V2291_FIXTURES = [
   "claude-lab--menu-effort-slider-v2291--w82.txt",
   "claude-lab--menu-effort-slider--w132.txt",
 ];
-// The scale those screens printed: five levels, and no word of the toggle's hint.
+// Owner item 9: the 2.1.327 captures extend the corpus; their new footer has its own test.
+const V2327_FIXTURES = ["claude--v2327-effort-dialog.ansi.txt", "claude--v2327-effort-dialog.txt"];
+// The scale the 2.1.291 screens printed: five levels, and no word of the toggle's hint.
 const SCALE_2291 = ["low", "medium", "high", "xhigh", "max"];
 
 function lines(text: string): StyledLine[] {
@@ -528,7 +530,7 @@ describe("detectEffort — what it declines", () => {
       .filter((n) => n.endsWith(".txt"))
       .filter((n) => detectEffort(load(n)) !== null)
       .toSorted();
-    expect(claimed).toEqual([...EFFORT_FIXTURES, ...V2291_FIXTURES].toSorted());
+    expect(claimed).toEqual([...EFFORT_FIXTURES, ...V2291_FIXTURES, ...V2327_FIXTURES].toSorted());
   });
 });
 

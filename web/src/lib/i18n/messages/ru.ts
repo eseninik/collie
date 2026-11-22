@@ -171,7 +171,7 @@ export const ru: Dictionary = {
     "Авто показывает боковую панель и столбцы панелей на экране шириной не менее 600 px и высотой не менее 480 px. Выкл. сохраняет макет для телефона везде.",
   "settings.enterSends.title": "Enter отправляет",
   "settings.enterSends.hint":
-    "С физической клавиатурой Enter отправляет сообщение, а Shift+Enter добавляет новую строку. С экранной клавиатурой Enter всегда добавляет новую строку.",
+    "На физической клавиатуре Enter отправляет сообщение, а Shift+Enter добавляет строку. Обычные сообщения Claude и Codex отправляются по Enter с любой клавиатуры, даже если настройка выключена.",
   "settings.projectPictures.title": "Картинки проектов",
   "settings.projectPictures.hint":
     "Показывает картинку, которую репозиторий указал в своём collie.toml, вместо логотипа агента, с логотипом в углу и как значок push-уведомлений.",
@@ -1638,6 +1638,7 @@ export const ru: Dictionary = {
   "connection.stale.messageTemplate": "{reason}. {detail}",
   "connection.session.title": "Пространства",
   "connection.session.aria": "Пространство: {name}. Сменить пространство",
+  "connection.session.moveAria": "Переместить {name}",
   "connection.session.primary": "основной",
   "connection.session.unreachable": "недоступен",
   "connection.session.ariaIn": "В пространстве: {name}",

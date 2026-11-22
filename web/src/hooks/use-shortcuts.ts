@@ -15,13 +15,13 @@ import { buildKeymap } from "@/lib/shortcuts/keymap";
 import { hasShortcutTarget, paneKeySink, runShortcutAction, type PaneKeySink } from "@/lib/shortcuts/registry";
 import { createResolver, type Resolver } from "@/lib/shortcuts/resolve";
 import { publishShortcutKeymap, publishShortcutMode, publishShortcutNotice } from "@/lib/shortcuts/state";
-import type { Keymap, KeyLike, Outcome, UserShortcuts } from "@/lib/shortcuts/types";
+import { TARGET_ATTRIBUTE } from "@/lib/shortcuts/target";
+import type { Keymap, KeyLike, Mode, Outcome, UserShortcuts } from "@/lib/shortcuts/types";
 import { chordToWireKey } from "@/lib/shortcuts/wire-key";
 
 // THE DESKTOP SHORTCUTS, WIRED (M108 spec 03). One capture-phase `keydown` on `window`, mounted once
-// in the root layout, feeds the resolver of lib/shortcuts/ and acts on its answer. The keymap core
-// decides which action a key is; this file only listens, consumes the keys that are ours, and calls
-// the handler the app registered for the action (lib/shortcuts/registry.ts).
+// in the root layout, handles Enter in active modes, feeds other keys to the resolver in
+// lib/shortcuts/, and runs the registered handler for the resulting action (lib/shortcuts/registry.ts).
 //
 // A key that is not ours is never touched: `pass` calls neither `preventDefault` nor `stopPropagation`,
 // so the composer keeps Enter and Ctrl/Cmd+Enter and a sheet keeps Escape. Every other outcome is
@@ -81,15 +81,42 @@ function act(outcome: Outcome, sink: PaneKeySink | null): void {
   if (!runShortcutAction(outcome.action, outcome.index)) publishShortcutNotice();
 }
 
+/** Keep the focused composer's paste keys and leave Enter to an active keyboard mode. */
+function isComposerKey(event: KeyboardEvent, mode: Mode): boolean {
+  const target = event.target;
+  if (!(target instanceof HTMLTextAreaElement) || target.getAttribute(TARGET_ATTRIBUTE) !== "focus_composer") return false;
+  const key = event.key.toLowerCase();
+  if (key === "enter") return mode === "normal" || mode === "prefix";
+  // The keymap can match a non-Latin chord by its physical key. Keep paste on that layout too.
+  const pasteKey = key === "v" || (event.code === "KeyV" && !/^[a-z0-9]$/u.test(key));
+  const paste = (event.ctrlKey || event.metaKey) && !event.altKey && pasteKey;
+  return paste || (event.shiftKey && key === "insert");
+}
+
+/** Enter always completes the active mode, including when the event carries modifiers. */
+function resolveKeyDown(event: KeyboardEvent, resolver: Resolver): Outcome {
+  const mode = resolver.mode;
+  if (event.key !== "Enter" || mode === "normal" || mode === "prefix") return resolver.press(toKeyLike(event));
+  resolver.reset();
+  return mode === "navigate" ? { type: "run", action: "navigate_open" } : { type: "leave-mode" };
+}
+
 function handleKeyDown(event: KeyboardEvent, resolver: Resolver): void {
   // The first press of a physical key is remembered for this device: it is what offers the shortcut
   // list in Settings (lib/hardware-keyboard.ts). A key that is not ours is read, never touched.
   noteKeyPress(event);
   // Under the idle cover the app is inert: its keyboard is too.
   if (isLocked() || isCatchingUp()) return;
+  if (isComposerKey(event, resolver.mode)) {
+    if (resolver.mode !== "normal") {
+      resolver.reset();
+      publishShortcutMode(resolver.mode);
+    }
+    return;
+  }
   const sink = paneKeySink();
   const startedNormal = resolver.mode === "normal";
-  const answered = resolver.press(toKeyLike(event));
+  const answered = resolveKeyDown(event, resolver);
   const outcome = startedNormal && sink?.isDirectTyping() === true ? onlyPrefixWhileTyping(answered, resolver) : answered;
   // A sticky mode with no key that has a target here would only swallow typing.
   const isModeWithoutTarget = outcome.type === "mode" && !hasShortcutTarget(outcome.id);

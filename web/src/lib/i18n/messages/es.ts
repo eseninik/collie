@@ -181,7 +181,7 @@ export const es: Dictionary = {
     "Automático muestra la barra lateral y las columnas de paneles en una pantalla de al menos 600 px de ancho y 480 px de alto. Desactivado mantiene el diseño de teléfono en todas partes.",
   "settings.enterSends.title": "Enter envía",
   "settings.enterSends.hint":
-    "Con un teclado físico, Intro envía el mensaje y Mayús+Intro añade una línea nueva. Con el teclado en pantalla, Intro siempre añade una línea nueva.",
+    "Con un teclado físico, Intro envía el mensaje y Mayús+Intro añade una línea nueva. Los mensajes normales para Claude y Codex se envían con Intro en ambos teclados, incluso con este ajuste desactivado.",
   "settings.projectPictures.title": "Imágenes de proyecto",
   "settings.projectPictures.hint":
     "Muestra la imagen que un repositorio indica en su collie.toml en lugar del logo del agente, con el logo en la esquina y como icono de sus notificaciones push.",
@@ -1675,6 +1675,7 @@ export const es: Dictionary = {
   "connection.stale.messageTemplate": "{reason}. {detail}",
   "connection.session.title": "Espacios",
   "connection.session.aria": "Espacio: {name}. Cambiar espacio",
+  "connection.session.moveAria": "Mover {name}",
   "connection.session.primary": "principal",
   "connection.session.unreachable": "inaccesible",
   "connection.session.ariaIn": "En el espacio: {name}",

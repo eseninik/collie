@@ -169,7 +169,7 @@ export const tr: Dictionary = {
     "Otomatik seçeneği, en az 600 px genişliğinde ve 480 px yüksekliğindeki bir ekranda kenar çubuğunu ve bölme sütunlarını gösterir. Kapalı seçeneği, telefon düzenini her yerde korur.",
   "settings.enterSends.title": "Enter gönderir",
   "settings.enterSends.hint":
-    "Fiziksel klavyede Enter mesajı gönderir, Shift+Enter yeni satır ekler. Ekran klavyesinde Enter her zaman yeni satır ekler.",
+    "Fiziksel klavyede Enter mesajı gönderir, Shift+Enter yeni satır ekler. Bu ayar kapalıyken bile Claude ve Codex'e gönderilen normal mesajlar her iki klavyede de Enter ile gönderilir.",
   "settings.projectPictures.title": "Proje resimleri",
   "settings.projectPictures.hint":
     "Bir deponun collie.toml dosyasında belirttiği resmi, köşede logo ile birlikte ajan logosunun yerine gösterir ve anlık bildirimlerin simgesi olarak da kullanır.",
@@ -1566,6 +1566,7 @@ export const tr: Dictionary = {
   "connection.stale.messageTemplate": "{reason}. {detail}",
   "connection.session.title": "Alanlar",
   "connection.session.aria": "Alan: {name}. Alanı değiştir",
+  "connection.session.moveAria": "{name} taşı",
   "connection.session.primary": "birincil",
   "connection.session.unreachable": "erişilemez",
   "connection.session.ariaIn": "Bulunulan alan: {name}",

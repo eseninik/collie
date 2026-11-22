@@ -37,9 +37,9 @@ function feedOf(window: Partial<ChatWindow>): ChatFeed {
   return { window: { ...EMPTY_CHAT_WINDOW, status: { kind: "live" }, ...window }, loadOlder: vi.fn(), loadingOlder: false, asked: 0, answered: 0, tried: false };
 }
 
-function stream(window: Partial<ChatWindow>, working = false) {
+function stream(window: Partial<ChatWindow>, working = false, agent: "claude" | "muse" = "claude") {
   const listRef = createRef<ChatMessageListHandle>();
-  return <SessionStream feed={feedOf(window)} address={ADDRESS} working={working} showToolCalls showCompactions={false} fontSize={14} listRef={listRef} agent="claude" />;
+  return <SessionStream feed={feedOf(window)} address={ADDRESS} working={working} showToolCalls showCompactions={false} fontSize={14} listRef={listRef} agent={agent} />;
 }
 
 const before = [entry("a1", 1, "an earlier answer")];
@@ -127,12 +127,13 @@ describe("SessionStream — one move at the tap (M104)", () => {
   });
 
   it("drops a line the bridge queued in the render its queue card shows it", () => {
-    const { rerender } = render(stream({ entries: before }, true));
+    // Muse retains upstream queue cards; the other scenarios keep their Claude direct-send input.
+    const { rerender } = render(stream({ entries: before }, true, "muse"));
     tap();
     act(() => handOverPending(ADDRESS, "calm-1"));
-    rerender(stream({ entries: before }, true));
+    rerender(stream({ entries: before }, true, "muse"));
     expect(pendingRows()).toHaveLength(1);
-    rerender(stream({ entries: before, queued: ["carry on"] }, true));
+    rerender(stream({ entries: before, queued: ["carry on"] }, true, "muse"));
     expect(pendingRows()).toHaveLength(0);
     expect(document.querySelector("[data-slot='stream-queued']")).not.toBeNull();
     expect(pendingLines(ADDRESS)).toHaveLength(0);

@@ -3646,10 +3646,10 @@ describe("AgentChat — a card docks above the belt (ADR 0059)", () => {
 // bottom region, whose rows are the only things that could have grown.
 describe("AgentChat — the terminal draft notice floats (ADR 0061)", () => {
   const withHostDraft = (draft: string) =>
-    paneTextWithDraft("recent pane output").replace(/^❯ .*$/m, `❯ ${draft}`);
+    readFileSync(join(import.meta.dirname, "..", "fixtures", "panes", "pi--v0851-draft.txt"), "utf8").replace("collie stock pi draft probe", draft);
 
   it("renders in the mirror's own slot, never in the bottom region", async () => {
-    const { container } = renderChat({ text: withHostDraft("typed on the host") });
+    const { container } = renderChat({ agent: { ...fixtureAgents[0]!, agent: "pi" }, text: withHostDraft("typed on the host") });
     await screen.findByText(/draft in terminal/i, undefined, { timeout: 4000 });
 
     const slot = container.querySelector('[data-slot="draft-notice-slot"]')!;
@@ -3668,7 +3668,7 @@ describe("AgentChat — the terminal draft notice floats (ADR 0061)", () => {
 
   it("the x hides it without moving anything into the flow", async () => {
     const user = userEvent.setup();
-    const { container } = renderChat({ text: withHostDraft("typed on the host") });
+    const { container } = renderChat({ agent: { ...fixtureAgents[0]!, agent: "pi" }, text: withHostDraft("typed on the host") });
     await screen.findByText(/draft in terminal/i, undefined, { timeout: 4000 });
 
     await user.click(screen.getByRole("button", { name: "Dismiss the terminal draft notice" }));
@@ -4018,7 +4018,9 @@ describe("AgentChat — the chat body", () => {
 // view's. These cases pin the second half: the same answer draws the button on a device that may
 // write and withholds it on one that may not, and a tap goes through the ordinary keys route once.
 describe("AgentChat — Send now on the waiting card", () => {
-  const agent = () => ({ ...fixtureAgents[0]!, hasSession: true });
+  // Claude and Codex draw no waiting card (owner, 2026-11-14), so the card's button is tried on an agent
+  // that keeps it; the keys are the bridge's declaration below, not the agent's.
+  const agent = () => ({ ...fixtureAgents[0]!, agent: "muse", hasSession: true });
 
   /** The fixture window, plus a queue and the keys the bridge declares for it. */
   function answerWithQueue(declared: string[] | undefined) {
@@ -4078,7 +4080,8 @@ describe("AgentChat — Send now on the waiting card", () => {
     renderChat({
       agent: agent(),
       device: { enforced: true, device: "my-phone", authorized: true },
-      text: MENU_TEXT,
+      // The agent is muse (see `agent` above), so the dialog is muse's own approval screen.
+      text: readFileSync(join(import.meta.dirname, "..", "fixtures", "panes", "muse--approval-ls.txt"), "utf8"),
     });
     expect(await screen.findByText("Waiting to send")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Send now, the waiting messages" })).toBeNull();
@@ -5107,14 +5110,11 @@ describe("AgentChat: the header line of a durable pane (M53 spec 12)", () => {
 });
 
 
-// M53 spec 12: the prompt pin (PR 406) under the two-line header. The pin is an overlay hung from the top
-// edge of the thread's own scrollport, so with the progress row and both strips gone on a durable pane it
-// sits right under the header's rule: inside the thread's box, never in the header, and over nothing but the
-// thread. jsdom lays nothing out, so each block gets a 100px row and the reader has scrolled 150px.
-describe("AgentChat: the prompt pin under a durable pane's header line", () => {
+// Owner requirement NO-PROMPT-PIN supersedes the old prompt-pin placement contract.
+describe("AgentChat — unobstructed history @oracle:requirement @req:NO-PROMPT-PIN", () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it("header line: the pin hangs from the thread's top edge, under the header, with no strip or progress row between", async () => {
+  it("keeps a durable pane's header and conversation visible with no prompt banner or top overlay", async () => {
     server.use(
       http.get("/api/config", () =>
         HttpResponse.json({
@@ -5138,22 +5138,20 @@ describe("AgentChat: the prompt pin under a durable pane's header line", () => {
     };
     const sibling: AgentView = { ...agent, paneId: "w1:p7" };
     const { container } = renderChat({ agent, agents: [agent, sibling], tabs: fixtureTabs });
+    await screen.findAllByText("what changed today?");
     await waitFor(() => expect(screen.queryByRole("navigation", { name: "Panes" })).toBeNull());
-    const pin = await waitFor(() => {
-      const found = container.querySelector<HTMLElement>('[data-slot="prompt-pin"]');
-      expect(found).not.toBeNull();
-      return found!;
-    });
-    expect(pin).toHaveTextContent("what changed today?");
-    // Never in the header: the header holds the title and the one line under it.
-    const header = container.querySelector("header")!;
-    expect(header.contains(pin)).toBe(false);
+    expect(container.querySelector('[data-block]')).toHaveTextContent("what changed today?");
     expect(container.querySelector('[data-slot="pane-place"]')).toHaveTextContent("Step 1 of 2: look it up");
-    // Hung from the scrollport's own top edge: the overlay is the scroller's sibling, at top 0.
-    const overlay = pin.parentElement!;
-    expect(overlay).toHaveClass("absolute", "top-0");
-    expect(overlay.previousElementSibling).toHaveClass("overflow-y-auto");
-    // And nothing stands between the header and that edge: no strip, no progress row, no bar.
+    expect(container.querySelector('[data-slot="prompt-pin"]')).toBeNull();
+    expect(screen.queryByText("Asked further back")).toBeNull();
+    const block = container.querySelector<HTMLElement>("[data-block]")!;
+    const scrollport = block.parentElement!;
+    fireEvent.scroll(scrollport, { target: { scrollTop: 250 } });
+    expect(container.querySelector('[data-slot="prompt-pin"]')).toBeNull();
+    const topOverlays = [...scrollport.parentElement!.children].filter(
+      (node) => node !== scrollport && node.classList.contains("absolute") && node.classList.contains("top-0"),
+    );
+    expect(topOverlays).toHaveLength(0);
     expect(screen.queryByRole("navigation", { name: "Tabs" })).toBeNull();
     expect(container.querySelector('[data-slot="pane-progress"]')).toBeNull();
     expect(container.querySelector('[role="progressbar"]')).toBeNull();

@@ -16,7 +16,8 @@ import { paneScopeKey } from "@/lib/scope";
 import type { ActionId } from "@/lib/shortcuts/actions";
 import { __resetShortcutRegistry, runShortcutAction } from "@/lib/shortcuts/registry";
 import { statusLabel, type AgentView, type DeviceAuth, type TabView } from "@/lib/types";
-import { __resetWideLayoutStore, setWideLayoutMode } from "@/lib/wide-layout-store";
+import { spaceKeyOf } from "@/lib/wide-layout";
+import { __resetWideLayoutStore, setSpaceStrip, setWideLayoutMode } from "@/lib/wide-layout-store";
 import { FOCUS_FRAME, PAGE_PLANE, PAPER_PLANE } from "@/components/strip-column";
 import { NAV_EDGE } from "@/components/ui/nav-edge";
 import { DetailRoute } from "@/routes/detail";
@@ -593,21 +594,23 @@ describe("the strip", () => {
 });
 
 describe("width", () => {
-  it("in wide mode a new column is 1/2 and the button cycles 1/2, 4/5, Full", async () => {
+  it("in wide mode every new column is Full, and the button cycles 1/2, 4/5, Full", async () => {
     // 1200 less the 320 sidebar leaves 880, two panes of 440.
     const { container } = await mount("w1:p1", 1200);
     await openBesideFromSidebar(container, A2);
     const col = columns(container)[0]!;
     const button = () => within(col).getByRole("button", { name: /^Width / });
-    expect(button().textContent).toBe("1/2");
+    expect(button().textContent).toBe("Full");
+    expect(col.style.flex).toBe("0 0 100%");
+    expect(within(columns(container)[1]!).getByRole("button", { name: /^Width / }).textContent).toBe("Full");
+    fireEvent.click(button());
+    await waitFor(() => expect(button().textContent).toBe("1/2"));
     expect(col.style.flex).toBe("0 0 50%");
     fireEvent.click(button());
     await waitFor(() => expect(button().textContent).toBe("4/5"));
     expect(col.style.flex).toBe("0 0 80%");
     fireEvent.click(button());
     await waitFor(() => expect(button().textContent).toBe("Full"));
-    fireEvent.click(button());
-    await waitFor(() => expect(button().textContent).toBe("1/2"));
     // The width is the column's own: the button changes nothing about the focus.
     expect(columns(container)[1]?.hasAttribute("data-focused")).toBe(true);
   });
@@ -806,12 +809,16 @@ describe("the add column", () => {
   };
 
   it("always ends the strip, after the last column, as wide as the room it leaves and never under a pane", async () => {
-    // One column at 1/2 of 880: the add column is the other half.
+    // One column at Full of 880: the add column is a pane wide, past the edge of the view.
     const { container } = await mount("w1:p1", 1200);
     const strip = q(container, '[data-slot="strip"]')!;
     expect(strip.lastElementChild).toBe(addColumn(container));
     expect(addColumn(container)?.style.flex).toBe("0 0 440px");
     const widthButton = () => within(columns(container)[0]!).getByRole("button", { name: /^Width / });
+    fireEvent.click(widthButton());
+    await waitFor(() => expect(widthButton().textContent).toBe("1/2"));
+    // One column at 1/2 of 880: the add column is the other half.
+    expect(addColumn(container)?.style.flex).toBe("0 0 440px");
     fireEvent.click(widthButton());
     await waitFor(() => expect(widthButton().textContent).toBe("4/5"));
     // 1/5 of 880 is under a pane: the add column is a pane wide, so the strip scrolls to it.
@@ -1314,8 +1321,12 @@ describe("the keyboard", () => {
   });
 
   it("steps the width one preset at a time and stops at the ends", async () => {
-    const { container } = await mount("w1:p1", 1200);
-    await openBesideFromSidebar(container, A2);
+    // Start from saved widths so the steps are independent of a new column's default.
+    setSpaceStrip(spaceKeyOf(A1, { scope: {} }), {
+      cols: [{ key: key(A1), preset: "half" }, { key: key(A2), preset: "fourfifths" }],
+      focus: key(A2),
+    });
+    const { container } = await mount(A2.paneId, 1200);
     const first = () => within(columns(container)[0]!).getByRole("button", { name: /^Width / });
     // The focus is the second column, so the step moves that one.
     const label = () => q(container, '[data-slot="column-head"]')?.textContent ?? "";

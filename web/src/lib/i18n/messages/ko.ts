@@ -173,7 +173,7 @@ export const ko: Dictionary = {
     "자동은 화면 너비가 600 px 이상이고 높이가 480 px 이상일 때 사이드바와 창 열을 표시합니다. 끄기는 모든 곳에서 스마트폰 레이아웃을 유지합니다.",
   "settings.enterSends.title": "Enter로 전송",
   "settings.enterSends.hint":
-    "물리 키보드에서는 Enter가 메시지를 전송하고 Shift+Enter가 줄바꿈을 합니다. 화면 키보드에서는 Enter가 항상 줄바꿈을 합니다.",
+    "물리 키보드에서는 Enter로 메시지를 보내고 Shift+Enter로 줄바꿈합니다. 이 설정을 꺼도 Claude와 Codex에 보내는 일반 메시지는 두 키보드 모두 Enter로 전송됩니다.",
   "settings.projectPictures.title": "프로젝트 이미지",
   "settings.projectPictures.hint":
     "저장소의 collie.toml에 지정된 이미지를 에이전트 로고 대신 표시하고 로고는 모서리에 둡니다. 푸시 알림의 아이콘으로도 사용합니다.",
@@ -1653,6 +1653,7 @@ export const ko: Dictionary = {
   "connection.stale.messageTemplate": "{reason}. {detail}",
   "connection.session.title": "스페이스",
   "connection.session.aria": "스페이스: {name}. 스페이스 전환",
+  "connection.session.moveAria": "{name} 이동",
   "connection.session.primary": "기본",
   "connection.session.unreachable": "접근 불가",
   "connection.session.ariaIn": "현재 스페이스: {name}",

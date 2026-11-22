@@ -83,7 +83,8 @@ describe("M102-15 I5, no long wait on a reading alone", () => {
     const rig = invariantRig({ ...AGENT, draw: { kind: "box" }, surface, holds: true });
     try {
       const id = "inv-held-long-1";
-      const first = await rig.handle({ id, text: TEXT, mode: "send", fromPhone: true });
+      // The owner's ordinary phone sends are direct. Keep this upstream hold oracle on a non-phone send.
+      const first = await rig.handle({ id, text: TEXT, mode: "send", fromPhone: false });
       expect(first.receipt?.outcome).toBe("held");
       rig.clock.now += 125_000;
       await Promise.all(rig.protocol.tickHolds("main", () => surface));
@@ -92,6 +93,20 @@ describe("M102-15 I5, no long wait on a reading alone", () => {
       const onReceipt = receipt !== undefined && "heldLong" in receipt && receipt.heldLong === true;
       const onEntry = entry !== undefined && entry !== null && "heldLong" in entry && entry.heldLong === true;
       expect(onReceipt || onEntry).toBe(true);
+    } finally {
+      rig.dispose();
+    }
+  });
+
+  test("the owner's ordinary phone send never creates a hold on the same running screen", async () => {
+    const surface: Surface = { revision: 1, turn: "running", modal: "none", composer: "unknown" };
+    const rig = invariantRig({ ...AGENT, draw: { kind: "box" }, surface, holds: true });
+    try {
+      const id = "inv-phone-direct-1";
+      const answer = await rig.handle({ id, text: TEXT, mode: "send", fromPhone: true });
+      expect(answer.receipt).toBeDefined();
+      expect(answer.receipt?.outcome).not.toBe("held");
+      expect(rig.holds?.get(id)).toBeNull();
     } finally {
       rig.dispose();
     }

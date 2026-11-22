@@ -307,3 +307,18 @@ describe("the suggestion's probe on a slow multiplexer (herdr-core 0.1.14, M78 s
     expect(pane.keysSeen).not.toContain("Enter");
   });
 });
+
+// Owner's direct-send brief, points 1–2: an ordinary phone message sends even when
+// an unstyled faint suggestion looks like a draft. The suggestion is not input.
+describe("direct phone send on Claude's unstyled suggestion (owner 2026-11-14)", () => {
+  test("the faint placeholder does not become a draft-clear failure", async () => {
+    const pane = new SuggestionPane(capture("claude--done.txt"), false);
+    const { send } = rig(pane);
+    const answer = await send("please run the tests", { fromPhone: true });
+    expect(answer.receipt?.outcome).toBe("sent");
+    expect(answer.offers).toEqual([]);
+    expect(pane.submitted).toEqual(["please run the tests"]);
+    expect(pane.box).toBe("");
+    expect(pane.keysSeen).not.toContain("Escape");
+  });
+});

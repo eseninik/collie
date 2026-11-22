@@ -56,10 +56,18 @@ describe("a Codex 0.169.0 goal notice remains after the empty-box shortcuts disa
     pane.render = () => `${render()}${pane.box === "" ? "" : "\n"}${" ".repeat(70)}${notice}`;
     return pane;
   };
+  const withoutGoalHint = (profile: Profile): Profile => ({
+    ...profile,
+    idle: { ...profile.idle, volatile: { ...profile.idle.volatile, below: {
+      ...profile.idle.volatile.below,
+      hints: (profile.idle.volatile.below.hints ?? []).filter((hint) => !hint.includes("Goal hit usage limits")),
+    } } },
+  });
 
+  // Keep the probe path in these two tests when the installed profile verifies 0.169.0.
   test("the standalone goal footer does not hold a message with probe_failed", async () => {
     const pane = goalPane();
-    const answer = await rig({ pane, harness: "codex", version: "0.169.0" }).send("reply with one word: ready");
+    const answer = await rig({ pane, harness: "codex", version: "0.169.0", status: "provisional" }).send("reply with one word: ready");
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Tab"] });
     expect(pane.transcript.at(-1)).toBe("› reply with one word: ready");
   });
@@ -70,18 +78,35 @@ describe("a Codex 0.169.0 goal notice remains after the empty-box shortcuts disa
       pane,
       harness: "codex",
       version: "0.169.0",
-      edit: (profile) => ({
-        ...profile,
-        idle: { ...profile.idle, volatile: { ...profile.idle.volatile, below: {
-          ...profile.idle.volatile.below,
-          hints: (profile.idle.volatile.below.hints ?? []).filter((hint) => !hint.includes("Goal hit usage limits")),
-        } } },
-      }),
+      status: "provisional",
+      edit: withoutGoalHint,
     }).send("reply with one word: ready");
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe", "Backspace"] });
     expect(answer.receipt?.detail).toStartWith("The probe character changed more than the box.");
     expect(pane.box).toBe("");
     expect(pane.transcript).not.toContain("› reply with one word: ready");
+  });
+
+  test("@req:COLLIE-1291-CODEX-GOAL @oracle:requirement the verified profile sends one phone message with the goal footer", async () => {
+    const pane = goalPane();
+    const transcriptStart = pane.transcript.length;
+    const text = "reply with one word: ready";
+    const answer = await rig({ pane, harness: "codex", version: "0.169.0" }).send(text, { fromPhone: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", profileStatus: "verified", keys: ["Tab"] });
+    expect(pane.calls).toEqual([`paste:${text}`]);
+    expect(pane.keysSeen).toEqual(["Tab"]);
+    expect(pane.transcript.slice(transcriptStart)).toEqual([`› ${text}`]);
+  });
+
+  test("@req:COLLIE-1291-CODEX-GOAL-GUARD @oracle:requirement a verified phone send stays typed when the goal hint is missing", async () => {
+    const pane = goalPane();
+    const text = "reply with one word: ready";
+    const answer = await rig({ pane, harness: "codex", version: "0.169.0", edit: withoutGoalHint }).send(text, { fromPhone: true });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", profileStatus: "verified" });
+    expect(pane.box).toBe(text);
+    expect(pane.keysSeen).not.toContain("Tab");
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.transcript).not.toContain(`› ${text}`);
   });
 
   test("the goal hint matches only the observed status and its warning suffix", () => {
@@ -161,7 +186,9 @@ describe("a command on a fresh Codex 0.163.0 screen, whose welcome picture hides
   });
 });
 
-describe("a probed message into a tall Codex 0.166.0 pane (harness lab drift, 2026-10-29)", () => {
+describe("a provisional Codex probing tall 0.166.0 captures (harness lab drift, 2026-10-29)", () => {
+  // The fixtures stay byte-faithful 0.166.0 captures. The simulated 0.170.0 instance is beyond
+  // the verified range, which is what requires the probe whose effects these tests pin.
   // eslint-disable-next-line no-control-regex
   const plain = (row: string): string => row.replace(/\u001b\[[0-9;:?]*[ -/]*[@-~]/gu, "");
   const pane = (name: string): string[] => readFileSync(join(import.meta.dirname, "..", "..", "web", "src", "fixtures", "panes", name), "utf8").replace(/\n$/u, "").split("\n");
@@ -196,39 +223,39 @@ describe("a probed message into a tall Codex 0.166.0 pane (harness lab drift, 20
 
   test("the 17-row logo hides at the probe character and returns after Backspace: the rows above only lost text, so the probe passes and Tab sends", async () => {
     const fake = logo();
-    const answer = await rig({ pane: fake, harness: "codex", version: "0.166.0" }).send("reply with one word: ready");
+    const answer = await rig({ pane: fake, harness: "codex", version: "0.170.0" }).send("reply with one word: ready");
     expect(answer.receipt).toMatchObject({ outcome: "sent", profileStatus: "provisional", keys: ["probe", "Backspace", "Tab"] });
     expect(fake.transcript.at(-1)).toBe("› reply with one word: ready");
   });
 
   test("a message's probe reads only the box and the rows under it (Codex takes text in a turn): the logo is no factor, with or without losesText", async () => {
-    const answer = await rig({ pane: logo(), harness: "codex", version: "0.166.0", edit: noLosesText }).send("reply with one word: ready");
+    const answer = await rig({ pane: logo(), harness: "codex", version: "0.170.0", edit: noLosesText }).send("reply with one word: ready");
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Tab"] });
   });
 
   test("a command compares the rows above too: the logo only lost its rows (idle.volatile.above.losesText), so /status goes in", async () => {
     const fake = logo();
-    const answer = await rig({ pane: fake, harness: "codex", version: "0.166.0" }).send("/status", { mode: "command" });
+    const answer = await rig({ pane: fake, harness: "codex", version: "0.170.0" }).send("/status", { mode: "command" });
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
   });
 
   test("without losesText the logo going reads as a moved screen for a command, and its probe is refused", async () => {
     const fake = logo();
-    const answer = await rig({ pane: fake, harness: "codex", version: "0.166.0", edit: noLosesText }).send("/status", { mode: "command" });
+    const answer = await rig({ pane: fake, harness: "codex", version: "0.170.0", edit: noLosesText }).send("/status", { mode: "command" });
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
     expect(fake.keysSeen).not.toContain("Enter");
   });
 
   test("a lone `⚠ 1 warning · f2 to view` row under the box once it holds text is a hint, so the probe passes and Tab sends", async () => {
     const fake = warning();
-    const answer = await rig({ pane: fake, harness: "codex", version: "0.166.0" }).send("reply with one word: ready");
+    const answer = await rig({ pane: fake, harness: "codex", version: "0.170.0" }).send("reply with one word: ready");
     expect(answer.receipt).toMatchObject({ outcome: "sent", profileStatus: "provisional", keys: ["probe", "Backspace", "Tab"] });
     expect(fake.transcript.at(-1)).toBe("› reply with one word: ready");
   });
 
   test("without the warning hint the lone warning row counts as a screen that moved, and the probe is refused, as it was in the lab", async () => {
     const fake = warning();
-    const answer = await rig({ pane: fake, harness: "codex", version: "0.166.0", edit: noWarningHint }).send("reply with one word: ready");
+    const answer = await rig({ pane: fake, harness: "codex", version: "0.170.0", edit: noWarningHint }).send("reply with one word: ready");
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
     expect(fake.keysSeen.filter((key) => key === "Tab" || key === "Enter")).toEqual([]);
   });

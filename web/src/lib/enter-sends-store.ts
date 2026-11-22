@@ -6,14 +6,12 @@ import type { EnterChoice } from "@/lib/enter-key";
 //
 // Per device and nothing else, the way lib/wide-layout-store.ts and lib/zen.ts are: it is how THIS
 // keyboard behaves, so it is never written to a bridge and another device keeps its own. Ctrl/Cmd+Enter
-// sends whatever this says; the on-screen keyboard's Enter is a new line whatever this says.
+// and ordinary Claude or Codex replies have their own Enter behavior in lib/enter-key.ts.
 
 const KEY = "collie:enter-sends:v1";
 
-// THE STORE HOLDS THE PERSON'S CHOICE AND NOTHING ELSE. "on", "off", or nothing (never chosen). There
-// is no default by device, no guess from a mouse or a screen size: nothing stored means Enter is a new
-// line everywhere, and only a tap, on the Settings switch or on the one-time offer above the box, writes
-// a value. A bad stored value reads as nothing.
+// Only a tap on the Settings switch or the one-time offer writes a value. A build can choose a
+// default for a device with no stored choice. A mouse or screen size never decides the setting.
 
 let choice = load();
 const listeners = new Set<() => void>();
@@ -38,6 +36,7 @@ function writeStorage(value: string | null): void {
 function load(): EnterChoice {
   const raw = readStorage();
   if (raw === "on" || raw === "off") return raw;
+  if (raw === null && import.meta.env.PROD && import.meta.env.VITE_COLLIE_ENTER_SENDS_DEFAULT === "on") return "on";
   return null;
 }
 
@@ -50,7 +49,7 @@ function subscribe(fn: () => void): () => void {
   return () => listeners.delete(fn);
 }
 
-/** What the person chose on this device, or null when they never did. */
+/** The device's effective choice, or null when unset. */
 export function enterSendsChoice(): EnterChoice {
   return choice;
 }
@@ -64,7 +63,7 @@ export function setEnterSends(on: boolean): void {
   emit();
 }
 
-/** The person's choice, reactive. Null until they choose. */
+/** The device's effective choice, reactive. */
 export function useEnterSendsChoice(): EnterChoice {
   return useSyncExternalStore(subscribe, enterSendsChoice, () => null);
 }

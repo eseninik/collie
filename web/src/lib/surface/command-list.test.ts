@@ -407,3 +407,17 @@ describe("omp's file popup under a path (notForText)", () => {
     expect(list).toMatchObject({ pointed: "/model", side: "under" });
   });
 });
+
+// Review of the BANG-PATH fix (2026-11-09): Claude's pointer pattern ends a command at a space, so the
+// completion row of a path with a space reads short, and the short part may equal the typed last word.
+describe("@oracle:requirement @req:BANG-PATH-4 pointsAt: a Claude path completion read short at a space", () => {
+  const CLAUDE_LIST = requireProfile("claude").idle.volatile.below.commandList!;
+  const EDGE = "─".repeat(120);
+
+  it("`  ❯ /tmp/my file.sh` under `! cat /tmp/my` is not the typed word's own completion", () => {
+    const texts = [EDGE, "!  cat /tmp/my", EDGE, "  ❯ /tmp/my file.sh"];
+    const list = commandListNear(texts, 0, 2, CLAUDE_LIST);
+    expect(list).toMatchObject({ pointed: "/tmp/my", side: "under" });
+    expect(pointsAt(list!, "! cat /tmp/my", CLAUDE_LIST)).toBe(false);
+  });
+});

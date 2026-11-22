@@ -169,7 +169,7 @@ export const zhTW: Dictionary = {
     "「自動」會在寬度至少 600 px 且高度至少 480 px 的螢幕上顯示側邊欄和窗格欄位。「關閉」則在所有位置維持手機版面配置。",
   "settings.enterSends.title": "Enter 傳送",
   "settings.enterSends.hint":
-    "使用實體鍵盤時，Enter 會傳送訊息，Shift+Enter 會換行。使用螢幕鍵盤時，Enter 一律換行。",
+    "使用實體鍵盤時，Enter 會傳送訊息，Shift+Enter 會換行。即使關閉這項設定，也能在任一鍵盤上按 Enter 向 Claude 和 Codex 傳送一般訊息。",
   "settings.projectPictures.title": "專案圖片",
   "settings.projectPictures.hint":
     "以儲存庫 collie.toml 指定的圖片取代代理的標誌，標誌顯示在角落，並作為推播通知的圖示。",
@@ -1640,6 +1640,7 @@ export const zhTW: Dictionary = {
   "connection.stale.messageTemplate": "{reason}。{detail}",
   "connection.session.title": "工作區",
   "connection.session.aria": "工作區：{name}。切換工作區",
+  "connection.session.moveAria": "移動 {name}",
   "connection.session.primary": "主要工作階段",
   "connection.session.unreachable": "無法連線",
   "connection.session.ariaIn": "目前工作區：{name}",

@@ -87,6 +87,10 @@ describe("a chord as a wire key", () => {
     expect(chordToWireKey({ ...chord, ctrl: true, key: "space" })).toBe("ctrl+Space");
   });
 
+  it("spells Shift+Insert for the bridge @oracle:requirement @req:PORT-1300-INSERT-OUTPUT", () => {
+    expect(chordToWireKey({ ...chord, key: "insert", shift: true })).toBe("shift+Insert");
+  });
+
   it("sends a symbol as itself", () => {
     expect(chordToWireKey({ ...chord, alt: true, key: "/" })).toBe("alt+/");
   });

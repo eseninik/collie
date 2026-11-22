@@ -15,6 +15,7 @@ import { detectWizard } from "./claude/wizard";
 import { dropClosingRule } from "./claude/closing-rule";
 import { dropTaskChecklist } from "./claude/task-checklist";
 import { detectMenu } from "./claude/menu";
+import { detectEffort } from "./claude/effort";
 import { detectResumePicker } from "./claude/resume";
 import { detectMarketplaces } from "./claude/marketplaces";
 import { detectAbovePromptNotice } from "./claude/above-prompt-notice";
@@ -83,9 +84,11 @@ function detectRegion(input: StyledLine[]): FoundRegion | null {
   // just before the generic menu too.
   const marketplaces = detectMarketplaces(lines);
   if (marketplaces) return { detector: "menu", region: marketplaces.signature };
-  // Last, exactly as claudeBuildBlocks orders it: the generic menu only claims what all six declined.
+  // Keep the established generic regions; the effort reader adds layouts they do not reach.
   const menu = detectMenu(lines);
   if (menu) return { detector: "menu", region: menu.signature };
+  const effort = detectEffort(lines);
+  if (effort) return { detector: "menu", region: effort.signature };
   // A notice above the live box (ADR 0109) lifts as a menu too, after every grammar above declined.
   const notice = detectAbovePromptNotice(lines);
   if (notice) return { detector: "menu", region: notice.model.signature };

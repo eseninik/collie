@@ -44,22 +44,24 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
     expect(pane.keysSeen).not.toContain("Enter");
   });
 
-  test("a provisional Codex: the probe passes though the hint row under the box hides at the first character (lab screens of 0.163.0, on 0.164.0)", async () => {
-    const { pane, send } = codex({ version: "0.164.0" });
+  // The captured 0.163.0 screen shape is independent of the simulated version. Keep the latter
+  // above the verified range so these scenarios continue to exercise the provisional probe.
+  test("a provisional Codex: the probe passes though the hint row under the box hides at the first character (lab screens of 0.163.0, simulated provisional 0.170.0)", async () => {
+    const { pane, send } = codex({ version: "0.170.0" });
     const answer = await send("please list the files in this folder");
     expect(answer.receipt).toMatchObject({ outcome: "sent", profileStatus: "provisional", keys: ["probe", "Backspace", "Tab"] });
     expect(pane.transcript.at(-1)).toBe("› please list the files in this folder");
   });
 
   test("a fresh Codex hides its welcome picture at the first character: the rows above only lost text, so the probe passes (lab, 0.163.0)", async () => {
-    const { pane, send } = codex({ version: "0.164.0" });
+    const { pane, send } = codex({ version: "0.170.0" });
     pane.codexWelcome = CODEX_WELCOME;
     const answer = await send("please list the files in this folder");
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Tab"] });
   });
 
   test("a row above the Codex box that gains text no longer fails the probe: the send goes in with Tab, never Enter (2026-10-17 decision)", async () => {
-    const { pane, send } = codex({ version: "0.164.0" });
+    const { pane, send } = codex({ version: "0.170.0" });
     // Rows high above the box, past the profile's volatile band over the top edge.
     pane.transcript = ["• first", "• second", "• third", "• fourth", "• fifth", "• sixth", "• seventh", "• eighth"];
     pane.afterInput = (p, what) => {
@@ -73,7 +75,7 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
   });
 
   test("a row under the Codex box that is no hint still fails the probe", async () => {
-    const { pane, send } = codex({ version: "0.164.0" });
+    const { pane, send } = codex({ version: "0.170.0" });
     pane.afterInput = (p, what) => {
       if (what.startsWith("type:")) p.codexHint = "  a row that is no hint";
     };
@@ -227,6 +229,39 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
     expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(answer.receipt?.keys.at(-1)).toBe("Enter");
     expect(pane.keysSeen).not.toContain("Tab");
+  });
+
+  // Local, 1.28.5 port review: since 1.28.5 a command may take the turn-aware compare, and on Codex an
+  // answer streams with no working row (lab, 0.163.0). The command then queues with Tab, as measured.
+  test("a command while an answer streams with no working row: Tab queues it, never Enter", async () => {
+    const { pane, send } = codex();
+    streams(pane);
+    const answer = await send("/status", { mode: "command" });
+    expect(answer.receipt?.keys.at(-1)).toBe("Tab");
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.queued).toEqual(["/status"]);
+  });
+
+  test("a never-held command while an answer streams with no working row never runs: it stays in the box, unsent", async () => {
+    const { pane, send } = codex();
+    streams(pane);
+    const answer = await send("/new", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", keys: [] });
+    expect(pane.keysSeen).toEqual([]);
+    expect(pane.queued).toEqual([]);
+    expect(pane.box).toBe("/new");
+  });
+
+  test("the turn ends while the command is typed: the box is free, so Enter runs it, never Tab into the slash popup", async () => {
+    const { pane, send } = codex();
+    streams(pane);
+    pane.afterInput = (p, what) => {
+      if (what.includes("/status")) p.turn = false;
+    };
+    const answer = await send("/status", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(pane.keysSeen).not.toContain("Tab");
+    expect(pane.transcript).toContain("› /status");
   });
 
   test("`!ls` is a shell command on Codex: Enter on an idle box; in a turn it is refused, never queued (keys.neverHeld)", async () => {

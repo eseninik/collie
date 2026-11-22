@@ -173,7 +173,7 @@ export const it: Dictionary = {
     "Automatico mostra la barra laterale e le colonne dei riquadri su uno schermo largo almeno 600 px e alto almeno 480 px. Disattivato mantiene ovunque il layout per smartphone.",
   "settings.enterSends.title": "Invio invia",
   "settings.enterSends.hint":
-    "Con una tastiera fisica, Invio invia il messaggio e Maiusc+Invio aggiunge una nuova riga. Con la tastiera sullo schermo, Invio aggiunge sempre una nuova riga.",
+    "Con una tastiera fisica, Invio invia il messaggio e Maiusc+Invio aggiunge una riga. I messaggi normali per Claude e Codex si inviano con Invio su entrambe le tastiere, anche con questa impostazione disattivata.",
   "settings.projectPictures.title": "Immagini di progetto",
   "settings.projectPictures.hint":
     "Mostra l'immagine che un repository indica nel suo collie.toml al posto del logo dell'agente, con il logo nell'angolo e come icona delle sue notifiche push.",
@@ -1571,6 +1571,7 @@ export const it: Dictionary = {
   "connection.stale.messageTemplate": "{reason}. {detail}",
   "connection.session.title": "Spazi",
   "connection.session.aria": "Spazio: {name}. Cambia spazio",
+  "connection.session.moveAria": "Sposta {name}",
   "connection.session.primary": "principale",
   "connection.session.unreachable": "non raggiungibile",
   "connection.session.ariaIn": "Nello spazio: {name}",

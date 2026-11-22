@@ -87,6 +87,12 @@ export interface HeldEntry {
   readonly walky?: string;
   /** Held {@link HELD_LONG_MS} or more, marked by the hold poll (see {@link HeldRow.heldLong}, M102 spec 12). */
   readonly heldLong?: true;
+  /**
+   * A person's plain send from the phone to a harness that takes a message while its turn runs: it goes
+   * into the running turn once the box reads free there, and does not wait for the turn to end (owner,
+   * 2026-11-12: every send reaches the terminal at once; protocol.ts `tickHolds`).
+   */
+  readonly intoTurn?: true;
 }
 
 export interface HoldInput {
@@ -109,6 +115,8 @@ export interface HoldInput {
   readonly versionUnread?: boolean;
   /** See {@link HeldEntry.walky}. */
   readonly walky?: string;
+  /** See {@link HeldEntry.intoTurn}. */
+  readonly intoTurn?: boolean;
   /** The caller's own end of the hold, epoch ms: it replaces {@link HOLD_MS} and {@link HOLD_COMMAND_MS}. */
   readonly expiresAt?: number;
 }
@@ -153,6 +161,7 @@ export function parseHeldEntry(raw: JsonValue | undefined): HeldEntry | null {
   const walky = asJsonString(node.walky);
   if (walky !== undefined && WALKY_MESSAGE_ID.test(walky)) entry = { ...entry, walky };
   if (node.heldLong === true) entry = { ...entry, heldLong: true };
+  if (node.intoTurn === true) entry = { ...entry, intoTurn: true };
   return entry;
 }
 
@@ -227,13 +236,14 @@ export class HoldStore {
   /** A new request at the end of its pane's queue. */
   add(input: HoldInput): HeldEntry {
     const at = this.now();
-    const { command, waitsForTurn, draftHolds, cause, versionUnread, expiresAt, walky, ...rest } = input;
+    const { command, waitsForTurn, draftHolds, cause, versionUnread, intoTurn, expiresAt, walky, ...rest } = input;
     let entry: HeldEntry = { ...rest, heldAt: at, expiresAt: expiresAt ?? at + (command ? HOLD_COMMAND_MS : HOLD_MS), seq: this.nextSeq++, state: "held", tries: 0 };
     if (waitsForTurn === true) entry = { ...entry, waitsForTurn: true };
     if (draftHolds === true) entry = { ...entry, draftHolds: true };
     if (cause !== undefined) entry = { ...entry, cause };
     if (versionUnread === true) entry = { ...entry, versionUnread: true };
     if (walky !== undefined) entry = { ...entry, walky };
+    if (intoTurn === true) entry = { ...entry, intoTurn: true };
     return this.write(entry);
   }
 
