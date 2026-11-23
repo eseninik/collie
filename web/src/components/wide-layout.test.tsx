@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import type { RefObject } from "react";
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 import { __resetBeltIntents, takeBeltIntent } from "@/lib/belt-intent";
 import { __reloadProjectPictures, __resetProjectPictures, setProjectPictures } from "@/lib/project-picture";
@@ -10,12 +10,13 @@ import { paneRowKey } from "@/lib/hosts";
 import { asJsonObject, asJsonString, parseJsonObject } from "@/lib/json";
 import { ROOT_ROUTE_ID, type HomeData, type PaneData } from "@/lib/loaders";
 import { panePath } from "@/lib/nav";
+import { setPinned } from "@/lib/pins";
 import { readAgentLaunch } from "@/lib/agent-startup";
 import { __resetOpenBeside } from "@/lib/open-beside";
 import { paneScopeKey } from "@/lib/scope";
 import type { ActionId } from "@/lib/shortcuts/actions";
 import { __resetShortcutRegistry, runShortcutAction } from "@/lib/shortcuts/registry";
-import { statusLabel, type AgentView, type DeviceAuth, type TabView } from "@/lib/types";
+import { statusLabel, type AgentView, type DeviceAuth, type TabView, type WorkspaceView } from "@/lib/types";
 import { spaceKeyOf } from "@/lib/wide-layout";
 import { __resetWideLayoutStore, setSpaceStrip, setWideLayoutMode } from "@/lib/wide-layout-store";
 import { FOCUS_FRAME, PAGE_PLANE, PAPER_PLANE } from "@/components/strip-column";
@@ -72,8 +73,9 @@ const A3 = pane("w1:p3", "w1", "alpha");
 const SH = pane("w1:p9", "w1", "alpha", "shell");
 const B1 = pane("w2:p1", "w2", "beta");
 
-// A test that needs a space with tabs sets these; afterEach clears them.
+// Tests that need more panes, spaces or tabs set these; afterEach clears them.
 let extraAgents: AgentView[] = [];
+let workspaces: WorkspaceView[] = [];
 let tabs: TabView[] = [];
 let device: DeviceAuth | undefined;
 
@@ -81,7 +83,7 @@ const home = (): HomeData => ({
   bridge: "connected",
   agents: [A1, A2, A3, B1, ...extraAgents],
   shellPanes: [SH],
-  workspaces: [],
+  workspaces,
   tabs,
   device,
   sessions: [],
@@ -170,6 +172,7 @@ afterEach(() => {
   posture = "flat";
   windowHeight = 900;
   extraAgents = [];
+  workspaces = [];
   tabs = [];
   device = undefined;
   vi.unstubAllGlobals();
@@ -384,6 +387,112 @@ describe("the sidebar", () => {
     // The same tap as the open sidebar.
     fireEvent.click(sidebarRow(container, A2)!);
     await waitFor(() => expect(router.state.location.pathname).toBe(panePath("w1:p2")));
+  });
+});
+
+describe("the rail — pinned panes", () => {
+  const pin = (p: AgentView, at = 1) => {
+    const { agents, shellPanes } = home();
+    setPinned(p, true, [...agents, ...shellPanes], at);
+  };
+  const rows = (group: HTMLElement) => within(group).getAllByRole("button").map((button) => button.dataset.paneKey);
+
+  async function closeSidebar(container: HTMLElement) {
+    fireEvent.click(q(container, '[data-slot="sidebar-toggle"]')!);
+    return waitFor(() => {
+      const rail = q(container, 'aside[data-slot="rail"]');
+      expect(rail).not.toBeNull();
+      return rail!;
+    });
+  }
+
+  it("@req:RAIL-PIN-FIRST @oracle:requirement moves the last space's only pane into the first group and opens it from there", async () => {
+    pin(B1);
+    const { container, router } = await mount(A1.paneId, 1200);
+    const heading = within(q(container, "aside")!).getByRole("heading", { name: "Pinned" });
+    const name = heading.textContent ?? "";
+    const rail = await closeSidebar(container);
+    expect(within(rail).getAllByRole("group")[0]).toHaveAccessibleName(name);
+    const pinnedGroup = within(rail).getByRole("group", { name });
+    const pinned = within(pinnedGroup).getByRole("button");
+    expect(pinned).toHaveAttribute("data-pane-key", paneRowKey(B1));
+    expect(rows(rail).filter((row) => row === paneRowKey(B1))).toHaveLength(1);
+    expect(within(rail).queryByRole("group", { name: "beta" })).not.toBeInTheDocument();
+
+    fireEvent.click(pinned);
+    await waitFor(() => expect(sidebarRow(container, B1)).toHaveAttribute("aria-current", "true"));
+    expect(router.state.location.pathname).toBe(panePath(B1.paneId));
+  });
+
+  it.each(["place", "activity", "cache"] as const)("@req:RAIL-PIN-ORDER @oracle:requirement matches the open sidebar's %s order for two pins", async (order) => {
+    // Both cache readings have expired on the real clock.
+    const now = 1_700_000_000_000;
+    const cache = (remaining: number): AgentView["cache"] => ({
+      state: "warm",
+      ttlSeconds: 300,
+      ruleId: "r",
+      confidence: "documented",
+      expiresAt: now + remaining,
+    });
+    if (order === "cache") {
+      onTestFinished(() => {
+        vi.useRealTimers();
+      });
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(now);
+    }
+
+    const recent = { ...pane("w2:p2", "w2", "beta"), lastActiveAt: 200, cache: cache(120_000) };
+    const gamma = { ...pane("w3:p1", "w3", "gamma"), workspaceNumber: 3, lastActiveAt: 100, cache: cache(60_000) };
+    extraAgents = [recent, gamma];
+    const repoRoot = A1.cwd;
+    workspaces = [
+      { workspaceId: "w1", number: 1, label: "alpha", focused: false, activeTabId: A1.tabId, tabCount: 1, paneCount: 4, repoRoot, isWorktree: false },
+      { workspaceId: "w2", number: 2, label: "beta", focused: false, activeTabId: B1.tabId, tabCount: 1, paneCount: 2 },
+      {
+        workspaceId: "w3", number: 3, label: "gamma", focused: false, activeTabId: gamma.tabId, tabCount: 1, paneCount: 1,
+        repoRoot: order === "cache" ? undefined : repoRoot,
+        isWorktree: order !== "cache",
+      },
+    ];
+    pin(recent, 1);
+    pin(gamma, 2);
+    localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ paneOrder: order }));
+
+    const { container } = await mount(A1.paneId, 1200);
+    const openRows = rows(within(q(container, "aside")!).getByRole("region", { name: "Pinned" }));
+    // Place puts alpha's linked worktree before beta. Activity puts beta's newer pane first.
+    // For Cache, gamma is its own space after beta. Its earlier expiry brings it first.
+    const expected = order === "activity" ? [recent, gamma] : [gamma, recent];
+    expect(openRows).toEqual(expected.map(paneRowKey));
+    const rail = within(await closeSidebar(container));
+    expect(rows(rail.getByRole("group", { name: "Pinned" }))).toEqual(openRows);
+    expect(rows(rail.getByRole("group", { name: "beta" }))).toEqual([paneRowKey(B1)]);
+    expect(rows(rail.getByRole("group", { name: "alpha" })).toSorted()).toEqual([A1, A2, A3, SH].map(paneRowKey).toSorted());
+    expect(rail.queryByRole("group", { name: "gamma" })).not.toBeInTheDocument();
+  });
+
+  it.each(["empty", "dormant"])("@req:RAIL-NO-PINS @oracle:requirement keeps the space groups with a pin list that is %s", async (pins) => {
+    if (pins === "dormant") pin(pane("w3:p1", "w3", "gamma"));
+    const { container } = await mount(A1.paneId, 1200);
+    const rail = await closeSidebar(container);
+    const groups = within(rail).getAllByRole("group");
+    expect(groups.map((group) => group.getAttribute("aria-label"))).toEqual(["alpha", "beta"]);
+    expect(groups.map((group) => rows(group).toSorted())).toEqual([
+      [A1, A2, A3, SH].map(paneRowKey).toSorted(),
+      [paneRowKey(B1)],
+    ]);
+  });
+
+  it("@req:RAIL-SPACE-POS @oracle:requirement keeps the space position and next space with a pin", async () => {
+    const { container, router } = await mount(A1.paneId, 1200);
+    expect(screen.getByText("space 1 of 2")).toBeInTheDocument();
+    act(() => pin(B1));
+    await closeSidebar(container);
+    expect(screen.getByText("space 1 of 2")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Next space" }));
+    expect(await screen.findByText("space 2 of 2")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(panePath(B1.paneId));
   });
 });
 

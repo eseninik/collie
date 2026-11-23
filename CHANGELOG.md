@@ -79,6 +79,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **Enter with a modifier also follows the active keyboard mode.** Enter with Ctrl, Cmd, Shift or Alt opens the highlighted row in Navigate mode or exits Resize mode. Your draft stays in the reply box.
 
+- **Pinned panes lead the sidebar when it is collapsed.** They appear in the same order as in the open sidebar, so you can open them from either view.
+
 ## [1.30.0] - 2026-11-21
 
 ### Added

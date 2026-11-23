@@ -19,6 +19,7 @@ import { BottomSheet } from "@/components/ui/sheet";
 import { CollieWordmark } from "@/components/collie-wordmark";
 import { openForCount, useDashPrefs } from "@/hooks/use-dash-prefs";
 import { useElementWidth } from "@/hooks/use-element-width";
+import { useFrozenRanks } from "@/hooks/use-frozen-ranks";
 import { useLocale } from "@/hooks/use-locale";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useNav } from "@/hooks/use-nav";
@@ -31,18 +32,20 @@ import { tabCreateKey, useSpaceActions } from "@/hooks/use-spaces";
 import { useStripSnap } from "@/hooks/use-strip-snap";
 import { useViewGlide } from "@/hooks/use-view-glide";
 import { queueBeltIntent, type BeltIntent } from "@/lib/belt-intent";
+import { pinnedRows, shownGroups } from "@/lib/dash-view";
 import { writeRefusal } from "@/lib/host-health";
 import { hostKey, hostName, isMultiHost, paneRowKey } from "@/lib/hosts";
 import { t } from "@/lib/i18n";
 import { useLaunchers } from "@/lib/launchers";
 import { homePath, trickSessionPath, newPath, panePath } from "@/lib/nav";
 import { useTabLook } from "@/lib/tab-look";
-import type { WorkspaceGroup } from "@/lib/pane-groups";
+import { groupPanesByWorkspace, type WorkspaceGroup } from "@/lib/pane-groups";
+import { inRankOrder } from "@/lib/pane-order";
 import { paneName } from "@/lib/pane-name";
 import { isOpenBeside, queueOpenBeside, takeOpenBeside } from "@/lib/open-beside";
 import { usePairing } from "@/lib/pairing";
 import { setStatus } from "@/lib/status";
-import { usePins } from "@/lib/pins";
+import { pinMatcher, usePins } from "@/lib/pins";
 import { useRootData } from "@/lib/route-data";
 import { paneScopeKey, type Scope } from "@/lib/scope";
 import { shortenHome } from "@/lib/shorten-home";
@@ -581,7 +584,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
           {sidebarShown ? (
             <SidebarList agent={agent} paneId={paneId} scope={scope} onSelect={goTo} />
           ) : (
-            <Rail spaces={spaces} hereKey={agent ? paneRowKey(agent) : null} onSelect={goTo} />
+            <Rail spaces={spaces} scope={scope} hereKey={agent ? paneRowKey(agent) : null} onSelect={goTo} />
           )}
         </div>
         {/* NEW SPACE and SETTINGS, pinned under the list so both are one tap away, however long the
@@ -1044,11 +1047,26 @@ function SidebarList({ agent, paneId, scope, onSelect }: { agent: AgentView | un
   );
 }
 
-/** The closed sidebar: each space's panes as icons with their status marks, in the sidebar's order. */
-function Rail({ spaces, hereKey, onSelect }: { spaces: readonly WorkspaceGroup[]; hereKey: string | null; onSelect: (pane: AgentView) => void }) {
+/** The closed sidebar: pinned panes first, then the spaces' remaining panes. */
+function Rail({ spaces, scope, hereKey, onSelect }: { spaces: readonly WorkspaceGroup[]; scope: Scope; hereKey: string | null; onSelect: (pane: AgentView) => void }) {
+  const { agents, shellPanes, tabs, servers, workspaces, sessions } = useRootData();
+  const { prefs } = useDashPrefs();
+  const pins = usePins();
+  const isPinned = pinMatcher(pins);
+  // The open sidebar folds linked worktrees for ordering. The strip still navigates its own spaces.
+  const pinned = pins.length === 0
+    ? []
+    : pinnedRows(groupPanesByWorkspace(agents, shellPanes, { order: "fixed", tabs, servers, workspaces, scope, sessions }), isPinned);
+  const { ranks } = useFrozenRanks(pinned.length === 0 ? "place" : prefs.paneOrder, [...agents, ...shellPanes]);
+  const groups = pinned.length === 0
+    ? spaces
+    : [
+        { key: "pinned", label: t("home.pinned.title"), panes: inRankOrder(pinned, ranks) },
+        ...shownGroups(spaces, false, isPinned).map(({ group, rows }) => ({ key: group.key, label: group.label, panes: rows })),
+      ];
   return (
     <div className="flex flex-col items-center pb-2">
-      {spaces.map((g) => (
+      {groups.map((g) => (
         <div key={g.key} role="group" aria-label={g.label} className="flex w-full flex-col items-center border-b border-rule py-1">
           <span aria-hidden className="w-full truncate px-1 text-center text-[11px] leading-4 text-muted-foreground">
             {g.label}
