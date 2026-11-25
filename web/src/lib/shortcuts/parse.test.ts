@@ -239,6 +239,10 @@ describe("printing", () => {
     expect(formatBinding(one("prefix+esc"), { mac: false, prefix })).toBe("Ctrl B Esc");
   });
 
+  it("labels Shift+Insert with Insert @oracle:requirement @req:PORT-1300-INSERT-OUTPUT", () => {
+    expect(formatBinding(one("shift+insert"), { mac: false, prefix })).toContain("Insert");
+  });
+
   it("gives the key caps as a list for the UI", () => {
     expect(bindingKeycaps(one("prefix+c"), { mac: false, prefix })).toEqual(["Ctrl", "B", "c"]);
     expect(chordKeycaps({ chord: prefix, mac: false })).toEqual(["Ctrl", "B"]);

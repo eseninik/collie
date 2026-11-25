@@ -182,7 +182,7 @@ export const es: Dictionary = {
     "Automático muestra la barra lateral y las columnas de paneles en una pantalla de al menos 600 px de ancho y 480 px de alto. Desactivado mantiene el diseño de teléfono en todas partes.",
   "settings.enterSends.title": "Enter envía",
   "settings.enterSends.hint":
-    "Con un teclado físico, Intro envía el mensaje y Mayús+Intro añade una línea nueva. Con el teclado en pantalla, Intro siempre añade una línea nueva.",
+    "Con un teclado físico, Intro envía el mensaje y Mayús+Intro añade una línea nueva. Los mensajes normales para Claude y Codex se envían con Intro en ambos teclados, incluso con este ajuste desactivado.",
   "settings.projectPictures.title": "Imágenes de proyecto",
   "settings.projectPictures.hint":
     "Muestra la imagen que un repositorio indica en su collie.toml en lugar del logo del agente, con el logo en la esquina y como icono de sus notificaciones push.",
@@ -652,6 +652,7 @@ export const es: Dictionary = {
   "composer.protocol.overrideMoved": "La pantalla cambió antes de que entrara tu texto, así que no se escribió nada. Mira la pantalla ahora, toca Enviar y luego Enviar de todos modos.",
   "composer.protocol.overrideTyped": "Tu texto está en la caja del agente. Collie no pulsó Intro. Mira la pantalla y luego pulsa Intro en Teclas.",
   "composer.protocol.draftUnseen": "La caja de entrada contiene un borrador que Collie no puede leer completo, así que no se escribió nada. El botón ‘Vaciar la caja’ elimina ese borrador. Después, envía de nuevo.",
+  "composer.protocol.tallDraft": "El borrador es más alto que el cuadro de entrada y Collie no puede saber cuánto ocupa. No se ha borrado nada. Vacía el cuadro con el teclado y vuelve a enviar.",
   "composer.step.sendAgain": "Enviar de nuevo",
   "composer.step.stop": "Detener el turno",
   "composer.step.emptyBox": "Vaciar la caja",
@@ -1683,6 +1684,7 @@ export const es: Dictionary = {
   "connection.stale.messageTemplate": "{reason}. {detail}",
   "connection.session.title": "Espacios",
   "connection.session.aria": "Espacio: {name}. Cambiar espacio",
+  "connection.session.moveAria": "Mover {name}",
   "connection.session.primary": "principal",
   "connection.session.unreachable": "inaccesible",
   "connection.session.ariaIn": "En el espacio: {name}",

@@ -155,7 +155,7 @@ describe("Send it again? after a send that ended unknown", () => {
   it("never asks after an answer that is known: a refusal is a send that did not go", async () => {
     const user = userEvent.setup();
     const sends = bridge([DRAFT_REFUSED, SENT]);
-    renderComposer();
+    renderComposer({ agent: "muse" });
     await user.type(box(), "run the tests");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(sends).toHaveLength(1));
@@ -167,7 +167,7 @@ describe("Send it again? after a send that ended unknown", () => {
   it("a known answer to the same text ends an earlier unknown one", async () => {
     const user = userEvent.setup();
     const sends = bridge([UNKNOWN, DRAFT_REFUSED, SENT]);
-    renderComposer();
+    renderComposer({ agent: "muse" });
     await user.type(box(), "run the tests");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(sends).toHaveLength(1));

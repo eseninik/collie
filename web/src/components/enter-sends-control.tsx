@@ -6,9 +6,8 @@ import { setEnterSends, useEnterSendsChoice } from "@/lib/enter-sends-store";
 import { t } from "@/lib/i18n";
 
 /**
- * Whether a bare Enter from a physical keyboard sends the reply (ADR 0157, lib/enter-key.ts). Off until the
- * person turns it on: the switch shows "on" only for a stored "on", and a tap stores the choice. A device that
- * never chose reads as off here, the same as the reply box does, so the switch never claims more than it does.
+ * Whether a bare Enter from a physical keyboard sends the reply (ADR 0157, lib/enter-key.ts).
+ * A tap stores the device's choice for replies governed by this setting.
  * The one-time offer above the reply box writes the same value. Per device, and never written to a bridge.
  */
 export function EnterSendsControl() {

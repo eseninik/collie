@@ -11,6 +11,7 @@ const NAMED_KEYS: ReadonlyMap<string, string> = new Map([
   ["esc", "Escape"],
   ["tab", "Tab"],
   ["backspace", "Backspace"],
+  ["insert", "Insert"],
   ["left", "Left"],
   ["right", "Right"],
   ["up", "Up"],

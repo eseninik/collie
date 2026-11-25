@@ -30,6 +30,7 @@ const REGIONS = JSON.parse(
  *  into the `▔` edge, which the menu's region leaves out since 1.22.5 (Claude puts timed notices
  *  there). */
 const SAME_DIALOG: string[][] = [
+  ["claude--v2327-effort-dialog.ansi.txt", "claude--v2327-effort-dialog.txt"],
   ["claude--menu-effort-slider--w120.txt", "claude--v2283-slash-effort.txt"],
   ["claude-lab--ask-multi-named-v2296--w82.txt", "claude-lab--ask-multi-v2296--w82.txt"],
   ["claude-lab--ask-multi-named-v2296--w40.txt", "claude-lab--ask-multi-v2296--w40.txt"],

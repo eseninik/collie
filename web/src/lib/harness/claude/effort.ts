@@ -48,9 +48,10 @@
 // Pure functions over `StyledLine[]`, tail-anchored like every other Claude grammar.
 
 import type { StyledLine } from "../../blocks";
+import { findInputFrame } from "../../surface/frame";
 import { displayWidth } from "../../text-width";
-import { hasInputBox } from "./chrome";
-import { isBlank, lineText } from "./markers";
+import { hasInputBox, inputBoxTail } from "./chrome";
+import { CLAUDE_IDLE, isBlank, lineText } from "./markers";
 import { SEGMENT_SPLIT } from "../menu-hints";
 import type { MenuRegion } from "./menu";
 import { regionSignature } from "./prompt-select";
@@ -67,6 +68,12 @@ const MARKER = "▲";
 // `MENU_ARROW_ROW`, whose group 1 (the value) is empty here and whose group 2 would swallow the rest
 // of the footer.
 const FOOTER_ARROWS = /←\/→\s+to\s+(\w+)/;
+
+// The empty frame under Effort ends in Claude's mode row. A user statusline above it can contain
+// arbitrary text, so the general chrome status-row budget cannot prove this modal is still last.
+// Output after the mode row must hide the card, even while it still fits inside that budget.
+const MODE_ROW = /^\s*(?:⏵⏵|⏸|\?)\s+\S/;
+const TAIL_HINTS = (CLAUDE_IDLE.volatile.below.hints ?? []).map((pattern) => new RegExp(pattern, "u"));
 
 // The one footer segment `parseKeyHintFooter` cannot take: "<key> for <verb phrase>", which this
 // screen writes instead of "<key> to <verb phrase>". Read here rather than widening the shared
@@ -170,8 +177,8 @@ function labelSpans(text: string): LabelSpan[] {
  *   1. the tail's key-hint footer — its last one to three rows, joined (menu-hints.ts) — parses AND
  *      advertises `←/→` with a verb. This is the screen's own claim that the arrows do something,
  *      and no other capture in the corpus makes it from its footer;
- *   2. there must be NO input box at the tail, for the reason menu.ts:79 has the same bail: fake
- *      buttons under a live composer are worse than no buttons;
+ *   2. any input frame below the footer must be the complete empty chrome of the 2.1.327 Effort
+ *      modal. Other input boxes keep menu.ts's refusal to put fake buttons under a live composer;
  *   3. exactly one row of the region carries exactly one `▲`, and the first row beneath it that is
  *      neither blank nor the track's own wrapped continuation splits into two or more labels, each
  *      carrying a word. First row, not any row: the row under the labels is a DESCRIPTION line
@@ -186,7 +193,18 @@ function labelSpans(text: string): LabelSpan[] {
  * Pure; the caller owns pane access.
  */
 export function detectEffortRegion(lines: StyledLine[]): MenuRegion | null {
-  const texts = lines.map(lineText);
+  const rawTexts = lines.map(lineText);
+  // Every accepted footer prints this token, even when the rest wraps. Decline ordinary screens
+  // before walking their input frame; this detector also runs during every composer pre-flight.
+  if (!rawTexts.some((text) => text.includes("←/→"))) return null;
+  // 2.1.327 leaves an empty input frame and its statusline below the modal. Only that complete,
+  // empty chrome may sit under the footer: a draft or another tail keeps the old refusal.
+  const frame = findInputFrame(lines, CLAUDE_IDLE);
+  const tail = frame === null ? [] : lines.slice(frame.bottom + 1).map(lineText).filter((text) => !isBlank(text));
+  while (tail.length > 0 && TAIL_HINTS.some((pattern) => pattern.test(tail.at(-1)!))) tail.pop();
+  const belowBox = frame !== null && frame.interior.text.trim() === "" && MODE_ROW.test(tail.at(-1) ?? "") && inputBoxTail(lines.slice(frame.top)) === "statusline";
+  const dialogLines = belowBox ? lines.slice(0, frame.top) : lines;
+  const texts = belowBox ? rawTexts.slice(0, frame.top) : rawTexts;
 
   // The footer, read as the one OR MORE rows the terminal wrapped it onto (menu-hints.ts). Below
   // about 70 columns this screen's footer runs over two or three rows, and the `←/→` phrase this
@@ -197,7 +215,7 @@ export function detectEffortRegion(lines: StyledLine[]): MenuRegion | null {
   const arrows = FOOTER_ARROWS.exec(footer);
   if (arrows === null) return null;
   const footerActions = footerAt.actions;
-  if (hasInputBox(lines)) return null;
+  if (hasInputBox(dialogLines)) return null;
 
   // One upward pass: the region's top is the nearest rule/border above the footer, and the marker
   // rows are the rows between the two. Collecting both together is what makes "within the region"
@@ -293,7 +311,7 @@ export function detectEffortRegion(lines: StyledLine[]): MenuRegion | null {
       break;
     }
   }
-  if (title === "") return null;
+  if (title === "" || (belowBox && title !== "Effort")) return null;
 
   // THE VALUE: the label whose centre is nearest the marker's column. Never a column constant, never
   // a label list — on the 82-column capture the marker sits at column 40 and `xhigh` is centred at

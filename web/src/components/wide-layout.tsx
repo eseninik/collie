@@ -8,6 +8,7 @@ import { ThreadSidebar } from "@/components/agent-sidebar";
 import { NAV_MARK_PX, SettingsGear, useHeaderDock } from "@/components/app-header";
 import { ActionsButton } from "@/components/actions-palette";
 import { useHostHealth } from "@/components/crew-provider";
+import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { StatusDot } from "@/components/status-badge";
 import { TabStrip } from "@/components/tab-strip";
 import { ColumnControls, ColumnHeader, PaneColumnBody, columnFrame } from "@/components/strip-column";
@@ -18,6 +19,7 @@ import { BottomSheet } from "@/components/ui/sheet";
 import { CollieWordmark } from "@/components/collie-wordmark";
 import { openForCount, useDashPrefs } from "@/hooks/use-dash-prefs";
 import { useElementWidth } from "@/hooks/use-element-width";
+import { useFrozenRanks } from "@/hooks/use-frozen-ranks";
 import { useLocale } from "@/hooks/use-locale";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useNav } from "@/hooks/use-nav";
@@ -30,18 +32,20 @@ import { tabCreateKey, useSpaceActions } from "@/hooks/use-spaces";
 import { useStripSnap } from "@/hooks/use-strip-snap";
 import { useViewGlide } from "@/hooks/use-view-glide";
 import { queueBeltIntent, type BeltIntent } from "@/lib/belt-intent";
+import { pinnedRows, shownGroups } from "@/lib/dash-view";
 import { writeRefusal } from "@/lib/host-health";
 import { hostKey, hostName, isMultiHost, paneRowKey } from "@/lib/hosts";
 import { t } from "@/lib/i18n";
 import { useLaunchers } from "@/lib/launchers";
 import { homePath, trickSessionPath, newPath, panePath } from "@/lib/nav";
 import { useTabLook } from "@/lib/tab-look";
-import type { WorkspaceGroup } from "@/lib/pane-groups";
+import { groupPanesByWorkspace, type WorkspaceGroup } from "@/lib/pane-groups";
+import { inRankOrder } from "@/lib/pane-order";
 import { paneName } from "@/lib/pane-name";
 import { isOpenBeside, queueOpenBeside, takeOpenBeside } from "@/lib/open-beside";
 import { usePairing } from "@/lib/pairing";
 import { setStatus } from "@/lib/status";
-import { usePins } from "@/lib/pins";
+import { pinMatcher, usePins } from "@/lib/pins";
 import { useRootData } from "@/lib/route-data";
 import { paneScopeKey, type Scope } from "@/lib/scope";
 import { shortenHome } from "@/lib/shorten-home";
@@ -326,6 +330,21 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
     }
     nav.up(homePath({ host: scope.host, session: scope.session }));
   };
+  // A pane closed from its sidebar row. Another pane only revalidates. The route's own pane must not
+  // leave the route on a pane that is gone: the focus moves to the next column, then to any pane of
+  // the space, and only a space with nothing left goes up to Home. The answer can arrive after the
+  // operator has moved on, so it runs against the render that is current then, through this ref.
+  const closedRow = useRef<(closed: AgentView) => void>(() => undefined);
+  closedRow.current = (closed: AgentView) => {
+    const key = columnKeyOf(closed, places);
+    if (key !== routeKey) return revalidate();
+    const next = removeColumn(strip, key);
+    if (spaceKey !== null && next !== strip) setSpaceStrip(spaceKey, next);
+    const column = next !== strip && next.focus !== null ? byColumn.get(next.focus) : undefined;
+    const target = column ?? space?.panes.find((p) => columnKeyOf(p, places) !== key);
+    if (target !== undefined) return goTo(target);
+    nav.up(homePath({ host: scope.host, session: scope.session }));
+  };
   const toTab = (tabId: string) => {
     if (agent === undefined || tabId === agent.tabId) return;
     const target = pickTabPane(
@@ -565,7 +584,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
           {sidebarShown ? (
             <SidebarList agent={agent} paneId={paneId} scope={scope} onSelect={goTo} />
           ) : (
-            <Rail spaces={spaces} hereKey={agent ? paneRowKey(agent) : null} onSelect={goTo} />
+            <Rail spaces={spaces} scope={scope} hereKey={agent ? paneRowKey(agent) : null} onSelect={goTo} />
           )}
         </div>
         {/* NEW SPACE and SETTINGS, pinned under the list so both are one tap away, however long the
@@ -862,26 +881,40 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
         </div>
       </BottomSheet>
 
-      <BottomSheet open={menuPane !== undefined} onClose={() => setMenuRow(null)} title={menuPane ? paneName(menuPane) : undefined}>
-        <div className="flex flex-col py-1">
-          <ActionRow
-            icon={<Icon name="open-here" className="size-5" />}
-            label={t("wide.openHere")}
-            onClick={() => {
-              setMenuRow(null);
-              if (menuPane) write(menuPane, openHere);
-            }}
-          />
-          <ActionRow
-            icon={<Icon name="open-beside" className="size-5" />}
-            label={t("wide.openBeside")}
-            onClick={() => {
-              setMenuRow(null);
-              if (menuPane) write(menuPane, openBeside);
-            }}
-          />
-        </div>
-      </BottomSheet>
+      {/* The sheet every other door to a pane opens, so Close keeps its two taps and its write gates. */}
+      <PaneActionsSheet
+        open={menuPane !== undefined}
+        onClose={() => setMenuRow(null)}
+        pane={menuPane ?? null}
+        scope={menuPane ? scopeOfPane(menuPane, places) : scope}
+        readOnly={readOnly}
+        savedCopy={root.error}
+        onRenamed={revalidate}
+        onClosed={() => {
+          if (menuPane) closedRow.current(menuPane);
+        }}
+        herd={herd}
+        leading={
+          <>
+            <ActionRow
+              icon={<Icon name="open-here" className="size-5" />}
+              label={t("wide.openHere")}
+              onClick={() => {
+                setMenuRow(null);
+                if (menuPane) write(menuPane, openHere);
+              }}
+            />
+            <ActionRow
+              icon={<Icon name="open-beside" className="size-5" />}
+              label={t("wide.openBeside")}
+              onClick={() => {
+                setMenuRow(null);
+                if (menuPane) write(menuPane, openBeside);
+              }}
+            />
+          </>
+        }
+      />
       <SpaceActionsSheet
         open={renamingSpace !== null}
         onClose={() => setRenamingSpace(null)}
@@ -1014,11 +1047,26 @@ function SidebarList({ agent, paneId, scope, onSelect }: { agent: AgentView | un
   );
 }
 
-/** The closed sidebar: each space's panes as icons with their status marks, in the sidebar's order. */
-function Rail({ spaces, hereKey, onSelect }: { spaces: readonly WorkspaceGroup[]; hereKey: string | null; onSelect: (pane: AgentView) => void }) {
+/** The closed sidebar: pinned panes first, then the spaces' remaining panes. */
+function Rail({ spaces, scope, hereKey, onSelect }: { spaces: readonly WorkspaceGroup[]; scope: Scope; hereKey: string | null; onSelect: (pane: AgentView) => void }) {
+  const { agents, shellPanes, tabs, servers, workspaces, sessions } = useRootData();
+  const { prefs } = useDashPrefs();
+  const pins = usePins();
+  const isPinned = pinMatcher(pins);
+  // The open sidebar folds linked worktrees for ordering. The strip still navigates its own spaces.
+  const pinned = pins.length === 0
+    ? []
+    : pinnedRows(groupPanesByWorkspace(agents, shellPanes, { order: "fixed", tabs, servers, workspaces, scope, sessions }), isPinned);
+  const { ranks } = useFrozenRanks(pinned.length === 0 ? "place" : prefs.paneOrder, [...agents, ...shellPanes]);
+  const groups = pinned.length === 0
+    ? spaces
+    : [
+        { key: "pinned", label: t("home.pinned.title"), panes: inRankOrder(pinned, ranks) },
+        ...shownGroups(spaces, false, isPinned).map(({ group, rows }) => ({ key: group.key, label: group.label, panes: rows })),
+      ];
   return (
     <div className="flex flex-col items-center pb-2">
-      {spaces.map((g) => (
+      {groups.map((g) => (
         <div key={g.key} role="group" aria-label={g.label} className="flex w-full flex-col items-center border-b border-rule py-1">
           <span aria-hidden className="w-full truncate px-1 text-center text-[11px] leading-4 text-muted-foreground">
             {g.label}

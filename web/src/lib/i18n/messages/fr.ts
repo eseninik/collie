@@ -172,7 +172,7 @@ export const fr: Dictionary = {
     "Auto affiche la barre latérale et les colonnes de volets sur un écran d'au moins 600 px de large et 480 px de haut. Désactivé conserve la disposition téléphone partout.",
   "settings.enterSends.title": "Entrée envoie",
   "settings.enterSends.hint":
-    "Avec un clavier physique, Entrée envoie le message et Maj+Entrée ajoute une nouvelle ligne. Avec le clavier à l'écran, Entrée ajoute toujours une nouvelle ligne.",
+    "Avec un clavier physique, Entrée envoie le message et Maj+Entrée ajoute une ligne. Pour les messages ordinaires à Claude et Codex, Entrée envoie depuis les deux claviers, même si ce réglage est désactivé.",
   "settings.projectPictures.title": "Images de projet",
   "settings.projectPictures.hint":
     "Affiche l'image qu'un dépôt indique dans son collie.toml à la place du logo de l'agent, avec le logo dans le coin et comme icône de ses notifications push.",
@@ -592,6 +592,7 @@ export const fr: Dictionary = {
   "composer.protocol.overrideMoved": "L'écran a changé avant l'entrée de votre texte, donc rien n'a été tapé. Regardez l'écran maintenant, puis appuyez sur Envoyer, puis sur Envoyer quand même.",
   "composer.protocol.overrideTyped": "Votre texte est dans la zone de l'agent. Collie n'a pas appuyé sur Entrée. Vérifiez l'écran, puis appuyez sur Entrée avec les touches.",
   "composer.protocol.draftUnseen": "La zone de saisie contient un brouillon que Collie ne peut pas lire en entier, donc rien n'a été tapé. Le bouton ‘Vider la zone’ supprime ce brouillon. Envoyez ensuite de nouveau.",
+  "composer.protocol.tallDraft": "Le brouillon dépasse la hauteur de la zone de saisie. Collie ne peut donc pas en connaître la longueur. Rien n’a été effacé. Videz la zone avec le clavier, puis réessayez.",
   "composer.step.sendAgain": "Renvoyer",
   "composer.step.stop": "Arrêter le tour",
   "composer.step.emptyBox": "Vider la zone",
@@ -1577,6 +1578,7 @@ export const fr: Dictionary = {
   "connection.stale.messageTemplate": "{reason}. {detail}",
   "connection.session.title": "Espaces",
   "connection.session.aria": "Espace : {name}. Changer d'espace",
+  "connection.session.moveAria": "Déplacer {name}",
   "connection.session.primary": "principal",
   "connection.session.unreachable": "inaccessible",
   "connection.session.ariaIn": "Dans l'espace : {name}",

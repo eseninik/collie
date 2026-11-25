@@ -228,7 +228,8 @@ describe("I6 across a crash between the text and Enter (M102 spec 16, chaos C1)"
     expect(pane.box).toBe(text);
     const fresh = restart(pane, clock, storeDir, AGENT);
     const from = pane.log.length;
-    const answer = await fresh.handle({ text: "a new message", mode: "send", fromPhone: true });
+    // The owner's ordinary phone sends replace drafts. Keep the upstream draft refusal on a non-phone send.
+    const answer = await fresh.handle({ text: "a new message", mode: "send", fromPhone: false });
     expect(answer.receipt?.outcome).toBe("refused");
     expect(answer.receipt?.reason).toBe("draft_present");
     const writes = pane.log.slice(from);

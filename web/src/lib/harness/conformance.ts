@@ -190,7 +190,20 @@ function trailingOutput(): StyledLine[] {
 /** The FIRST row of the tail's key-hint footer, which is the last non-blank row on a wide pane and
  *  the top of the wrapped group on a narrow one. Falls back to the last non-blank row for a tail
  *  that is not a key-hint footer at all. */
-function footerTop(lines: StyledLine[]): number {
+function footerTop(lines: StyledLine[], boundRegion?: readonly string[]): number {
+  if (boundRegion !== undefined) {
+    // Match the menu's own bound region, preserving original row indices across blank lines.
+    // The two confirmed Effort captures draw a box and status rows after their actual key footer.
+    const kept = lines.map((line, row) => ({ row, text: lineText(line).replace(/\s+$/, "") })).filter((line) => line.text.length > 0);
+    const expected = normalizeRegion(boundRegion.join("\n"));
+    const end = lastMatchEnd(kept.map((line) => line.text), expected);
+    expect(end, "the menu's bound region is present in the raw capture").toBeGreaterThanOrEqual(0);
+    const firstRow = kept[end - expected.length + 1]!.row;
+    const lastRow = kept[end]!.row;
+    const footer = readKeyHintFooter(lines.slice(firstRow, lastRow + 1).map(lineText));
+    expect(footer, "the bound menu region contains its actual key footer").not.toBeNull();
+    return firstRow + footer!.startLine;
+  }
   return readKeyHintFooter(lines.map(lineText))?.startLine ?? lastNonBlank(lines);
 }
 
@@ -1191,7 +1204,19 @@ export function describeAdapterConformance(
           // rows (menu-hints.ts `readKeyHintFooter`), and a row spliced into the middle of one would
           // be cutting the footer in half rather than adding a row above it.
           const perturbed = [...lines];
-          perturbed.splice(footerTop(lines), 0, textLine("  ○ Something else entirely"));
+          // Only the confirmed complete Effort-above-empty-box captures have a footer above status rows.
+          const effortAboveEmptyBox = adapter.agent === "claude" && [
+            "claude--v2327-effort-dialog.ansi.txt",
+            "claude--v2327-effort-dialog.txt",
+          ].includes(name);
+          let boundRegion: string[] | undefined;
+          if (effortAboveEmptyBox) {
+            const menus = adapter.buildBlocks(lines).filter((block) => block.kind === "menu");
+            expect(menus).toHaveLength(1);
+            expect(menus[0]!.menu.title).toBe("Effort");
+            boundRegion = regionRows(menus[0]!);
+          }
+          perturbed.splice(footerTop(lines, boundRegion), 0, textLine("  ○ Something else entirely"));
           const after = menuSignatures(adapter.buildBlocks(perturbed));
           expect(after.length, `${name}: the perturbed capture stopped lifting a menu`).toBe(
             menuSignatures(adapter.buildBlocks(lines)).length,

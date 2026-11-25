@@ -119,7 +119,7 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
       { body: { receipt: receipt("refused", "draft_present"), offers: ["append", "replace", "cancel"] } },
       { body: { receipt: receipt("sent"), offers: [] } },
     ]);
-    renderComposer();
+    renderComposer({ agent: "pi" });
     await user.type(screen.getByPlaceholderText(/type a reply/i), "new words");
     await user.click(screen.getByRole("button", { name: "Send" }));
     const sheet = await screen.findByTestId("send-offer-modal");
@@ -140,7 +140,7 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
   it("the offers are compact buttons that keep the 44px reach, the dismiss included", async () => {
     const user = userEvent.setup();
     bridge([{ body: { receipt: receipt("typed_not_submitted", "changed"), offers: ["submit", "discard"] } }]);
-    renderComposer();
+    renderComposer({ agent: "pi" });
     await user.type(screen.getByPlaceholderText(/type a reply/i), "new words");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await screen.findByTestId("send-offers");
@@ -157,7 +157,7 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
   it("a draft refusal on a pane with a returned queued card points at that card, and keeps the offers (ADR 0122)", async () => {
     const user = userEvent.setup();
     bridge([{ body: { receipt: receipt("refused", "draft_present"), offers: ["append", "replace", "cancel"] } }]);
-    renderComposer({ returnedDraft: true });
+    renderComposer({ agent: "pi", returnedDraft: true });
     await user.type(screen.getByPlaceholderText(/type a reply/i), "new words");
     await user.click(screen.getByRole("button", { name: "Send" }));
     expect(await screen.findByText("Your queued message is back in the agent as a draft. Use its card.")).toBeInTheDocument();
@@ -192,7 +192,7 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
       { body: { receipt: receipt("refused", "draft_present"), offers: ["append", "replace", "cancel"] } },
       { body: { receipt: receipt("sent"), offers: [] } },
     ]);
-    renderComposer();
+    renderComposer({ agent: "pi" });
     await user.type(screen.getByPlaceholderText(/type a reply/i), "more words");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await user.click(await screen.findByRole("button", { name: /^Add to it/ }));
@@ -208,7 +208,7 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
       { body: { receipt: receipt("refused", "draft_present"), offers: ["append", "replace", "cancel"], rowsHash: "0def34" } },
       { body: { receipt: receipt("sent"), offers: [] } },
     ]);
-    renderComposer();
+    renderComposer({ agent: "pi" });
     const field = screen.getByPlaceholderText(/type a reply/i);
     await user.type(field, "new words");
     await user.click(screen.getByRole("button", { name: "Send" }));
@@ -230,7 +230,7 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
       { body: { receipt: receipt("refused", "unconfirmed"), offers: ["commit", "keys"], rowsHash: "0abc12" } },
       { body: { receipt: receipt("sent"), offers: [] } },
     ]);
-    renderComposer();
+    renderComposer({ agent: "pi" });
     await user.type(screen.getByPlaceholderText(/type a reply/i), "go ahead");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await user.click(await screen.findByRole("button", { name: "Send anyway" }));
@@ -247,7 +247,7 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
       { body: { receipt: receipt("typed_not_submitted", "changed"), offers: ["submit", "discard", "keys"] } },
       { body: { receipt: receipt("discarded"), offers: [] } },
     ]);
-    renderComposer();
+    renderComposer({ agent: "pi" });
     await user.type(screen.getByPlaceholderText(/type a reply/i), "half way");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await user.click(await screen.findByRole("button", { name: "Discard" }));
@@ -311,7 +311,7 @@ describe("the draft offers as a modal", () => {
   it("opens a centred modal with three buttons and their lines, and draws no strip and no notice", async () => {
     const user = userEvent.setup();
     bridge([DRAFT]);
-    renderComposer();
+    renderComposer({ agent: "pi" });
     const dialog = await refuse(user, "new words");
     expect(dialog).toHaveAttribute("aria-modal", "true");
     expect(dialog).toHaveAttribute("data-placement", "center");
@@ -346,7 +346,7 @@ describe("the draft offers as a modal", () => {
   ])("%s sends its offer as a new request and closes the modal", async (row, mode, text) => {
     const user = userEvent.setup();
     const { sends } = bridge([DRAFT, { body: { receipt: receipt("sent"), offers: [] } }]);
-    renderComposer();
+    renderComposer({ agent: "pi" });
     await refuse(user, "more words");
     await user.click(screen.getByRole("button", { name: new RegExp(`^${row}`) }));
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -357,7 +357,7 @@ describe("the draft offers as a modal", () => {
   it("Cancel closes the modal, sends nothing and keeps the text", async () => {
     const user = userEvent.setup();
     const { sends } = bridge([DRAFT]);
-    renderComposer();
+    renderComposer({ agent: "pi" });
     await refuse(user, "keep me");
     await user.click(screen.getByRole("button", { name: /^Cancel/ }));
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -378,7 +378,7 @@ describe("the draft offers as a modal", () => {
   ])("a close without a choice (%s) drops the offer, hides the notice and sends nothing", async (_how, close) => {
     const user = userEvent.setup();
     const { sends } = bridge([DRAFT]);
-    renderComposer();
+    renderComposer({ agent: "pi" });
     await refuse(user, "keep me");
     act(() => close());
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -395,7 +395,7 @@ describe("the draft offers as a modal", () => {
       { body: { receipt: receipt("refused", "draft_present"), offers: ["append", "replace", "cancel"], rowsHash: "0aaa11", draftText: "fix the login\nthen the tests" } },
       { body: { receipt: receipt("refused", "draft_present"), offers: ["append", "replace", "cancel"], rowsHash: "0bbb22", draftText: "a very long draft", draftCut: true } },
     ]);
-    renderComposer();
+    renderComposer({ agent: "pi" });
     const dialog = await refuse(user, "words");
     const quote = dialog.querySelector('[data-slot="offer-draft"]');
     expect(quote).toHaveTextContent("In the agent's box");
@@ -420,7 +420,7 @@ describe("the draft offers as a modal", () => {
       { body: { receipt: receipt("refused", "draft_present"), offers: ["append", "replace", "cancel"], rowsHash: "0bbb22", draftText: "draft B typed since" } },
       { body: { receipt: receipt("sent"), offers: [] } },
     ]);
-    renderComposer();
+    renderComposer({ agent: "pi" });
     expect(await refuse(user, "words")).toHaveTextContent("draft A at the desk");
     await user.click(screen.getByRole("button", { name: new RegExp(`^${first}`) }));
     await waitFor(() => expect(sends).toHaveLength(2));
@@ -440,7 +440,7 @@ describe("the draft offers as a modal", () => {
   it("the buttons wait while a launch starts, as the strip's buttons do", async () => {
     const user = userEvent.setup();
     const { sends } = bridge([DRAFT]);
-    renderComposer();
+    renderComposer({ agent: "pi" });
     await refuse(user, "wait");
     setStarting(true);
     for (const row of [/^Add to it/, /^Replace/, /^Cancel/]) expect(screen.getByRole("button", { name: row })).toBeDisabled();
@@ -451,7 +451,7 @@ describe("the draft offers as a modal", () => {
   it("another offer set (Submit and Discard) keeps the strip and opens no modal", async () => {
     const user = userEvent.setup();
     bridge([{ body: { receipt: receipt("typed_not_submitted", "changed"), offers: ["submit", "discard", "keys"] } }]);
-    renderComposer();
+    renderComposer({ agent: "pi" });
     await user.type(field(), "half way");
     await user.click(screen.getByRole("button", { name: "Send" }));
     expect(await screen.findByTestId("send-offers")).toHaveTextContent("Submit");

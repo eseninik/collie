@@ -46,6 +46,10 @@ Press the prefix, let go, then press one action key. The prefix waits for as lon
 - Press a key that is not for Collie, with no prefix, and it goes to the page as usual. The
   composer keeps its Enter and a sheet keeps its Escape.
 
+In normal mode and while the prefix waits, the focused reply box keeps Enter. Shift+Enter adds a line.
+The focused reply box also keeps the paste keys, including Shift+Insert. A key kept by the box ends
+a pending prefix. Paste keys also exit an active mode.
+
 While the prefix waits, a bar along the foot of the window names the mode and the keys that work
 next. It follows the keys you set. `Esc` cancels it.
 
@@ -61,9 +65,10 @@ Actions list that is open covers the page, and then only the controls inside it 
 ## Navigate mode and Resize mode
 
 A mode stays on until you press `Esc`. In Resize mode `Enter` leaves too, and in Navigate mode
-`Enter` opens the row and leaves. The bar shows its name and its keys. A mode also stays on while the
-screen changes under it, and it ends when the window loses focus, or when the new screen has no key
-of the mode that can act.
+`Enter` opens the row and leaves. In either mode, Enter uses the same action with or without
+modifiers and leaves any reply draft in the box. The bar shows the mode and its keys. A mode also
+stays on while the screen changes under it, and it ends when the window loses focus, or when the new
+screen has no key of the mode that can act.
 
 | Mode | Open with | Keys inside |
 | --- | --- | --- |
@@ -190,7 +195,7 @@ adds `shift`.
 | --- | --- |
 | Modifiers | `ctrl` (or `control`), `shift`, `alt` (or `option`, `meta`), `cmd` (or `command`, `super`), `mod` |
 | `mod` | `cmd` on a Mac, `ctrl` everywhere else |
-| Named keys | `space`, `enter`, `esc`, `tab`, `backspace`, `left`, `right`, `up`, `down`, `f1` to `f12` |
+| Named keys | `space`, `enter`, `esc`, `tab`, `backspace`, `insert`, `left`, `right`, `up`, `down`, `f1` to `f12` |
 | Symbols | `minus`, `comma`, `period`, `slash`, `backslash`, `quote`, `semicolon`, `backtick`, `plus` (or `++`) |
 | Digits | `1..9` stands for the nine digits. Only an action that takes a number accepts it. |
 

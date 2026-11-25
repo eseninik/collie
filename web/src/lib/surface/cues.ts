@@ -116,6 +116,8 @@ const DISMISS_HEADER = /^\s*(\S(?:.*\S)?)\s{3,}(?:esc|escape)\s*$/iu;
  * /cost and /usage panel during a turn, fixtures claude--v2301-usage-panel-over-box--w82 and --w40): strong.
  */
 const PANEL_FOOT = /^\s*(?:esc|escape)\s+to\s+(?:cancel|close|exit|dismiss|go back)\s*$/iu;
+/** Two padding cells identify a separate clock; leave the rest blank instead of backtracking over it. */
+const RIGHT_CLOCK = /(?:^|\s{2})(?:[01]?\d|2[0-3]):[0-5]\d:[0-5]\d\s*$/u;
 /** A slash command with its description in a second column ("/agents     Switch agent"). */
 const COMMAND_ENTRY = new RegExp(`^(\\s*)(?:[${POINTERS}]\\s*)?/[\\w:.-]+\\s{2,}\\S`, "u");
 /** A prompt that holds only a slash query: "/", "/res", "❯ /usage". */
@@ -151,6 +153,11 @@ const SPINNER_ROW = /^\s*\S{1,2}\s+\S[^(]*?(?:…|\.\.\.)(?:\s+·\s+\p{L}[\p{L} 
 
 function isBlank(text: string): boolean {
   return text.trim().length === 0;
+}
+
+function withoutClock(text: string): string {
+  if (!text.includes(":")) return text;
+  return text.replace(RIGHT_CLOCK, "");
 }
 
 /** The row with border glyphs read as spaces, so columns hold and a boxed row reads like a bare one. */
@@ -231,14 +238,15 @@ function tailCluster(texts: readonly string[]): number[] {
 }
 
 /** The nearest run of non-blank rows above a frame's top edge, inside the volatile band. A notice the
- *  profile names is blank by now ({@link readCues}), so the run is the one above it. */
+ *  profile names is blank by now ({@link readCues}), so the run is the one above it. A clock alone
+ *  remains blank for this walk; it cannot hide the panel footer on the next row. */
 function aboveRun(texts: readonly string[], frame: Frame): number[] {
   const band = frame.volatile.above;
   if (band === null) return [];
   let i = frame.top - 1;
-  while (i >= band.first && isBlank(texts[i]!)) i--;
+  while (i >= band.first && isBlank(withoutClock(texts[i]!))) i--;
   const rows: number[] = [];
-  while (i >= band.first && !isBlank(texts[i]!)) rows.push(i--);
+  while (i >= band.first && !isBlank(withoutClock(texts[i]!))) rows.push(i--);
   return rows.toReversed();
 }
 
@@ -745,7 +753,7 @@ export function readCues(allRows: readonly FrameRow[], frame: Frame | null, noti
   const under = cuesIn(texts, cluster);
   const over = cuesIn(texts, above);
   // A panel's dismiss hint, alone over the box: the panel holds the keys, whatever the box looks like.
-  const panelFoot = above.length === 1 && PANEL_FOOT.test(unboxed(texts[above[0]!]!));
+  const panelFoot = above.length === 1 && PANEL_FOOT.test(withoutClock(unboxed(texts[above[0]!]!)));
   const overStrong = panelFoot || strengthOf(over.cues, over) === "strong";
   const cues = overStrong ? [...under.cues, ...over.cues] : under.cues;
   const strength = overStrong ? "strong" : strengthOf(under.cues, under);

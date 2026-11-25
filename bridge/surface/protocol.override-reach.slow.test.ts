@@ -13,8 +13,16 @@ useScratchDir();
 
 describe("2. the harm cases: an override never answers a question (M102 spec 12)", () => {
   const dialogs = Object.entries(LABELS.fixtures).filter(([, label]) => label.state === "dialog");
+  type BlindOutcome = "passed" | "guarded";
+  const localDialogs = {
+    // Both Claude captures show the prompt inside a frame below the effort picker.
+    "claude--v2327-effort-dialog.ansi.txt": "passed",
+    "claude--v2327-effort-dialog.txt": "passed",
+    // The Codex picker takes the place of the input box.
+    "codex--v0169-model-dialog--w120.txt": "guarded",
+  } as const satisfies Record<string, BlindOutcome>;
 
-  // Each of the four walks reads every dialog fixture of the corpus (722 screens). That took 6.5 to 6.9 s
+  // Each of the four walks reads every dialog fixture of the corpus. That took 6.5 to 6.9 s
   // on the Windows VM and 4 s on a loaded Linux host, against bun's 5 s. The walk stays whole; the limit is
   // the one that a slow machine needs.
   const WALK_TIMEOUT_MS = 60_000;
@@ -37,12 +45,16 @@ describe("2. the harm cases: an override never answers a question (M102 spec 12)
   // past it goes in with no key at all, Enter included, only where the screen shows an agent's input box or
   // footer and the sign is no row of one-key items. Elsewhere (a strong cue alone included) the refusal carries
   // no rows hash and the override is refused too. Never a key on either tap. Measured 2026-11-25: 266 of the
-  // 722 dialogs pass (all on a frame), 456 are guarded (436 cue only, 17 no agent rows, 3 single-key on a frame).
+  // 722 upstream dialogs pass (all on a frame), 456 are guarded (436 cue only, 17 no agent rows, 3 single-key on a frame).
   for (const foreground of [undefined, "unknown", "program"] as const) {
     test(`the same dialogs on a pane with no profile (the blind road, foreground ${foreground ?? "not read"}): the first send refused menu_open, the override typed with no key or refused, never a key`, async () => {
       const wrong: string[] = [];
-      let passed = 0;
-      let guarded = 0;
+      const upstream = { passed: 0, guarded: 0 };
+      const local: Record<string, BlindOutcome> = {};
+      const tally = (name: string, outcome: BlindOutcome): void => {
+        if (Object.hasOwn(localDialogs, name)) local[name] = outcome;
+        else upstream[outcome]++;
+      };
       for (const [name] of dialogs) {
         const screen = new ScreenPane(pane(name));
         const r = rig(screen, { harness: NO_PROFILE, foreground });
@@ -52,7 +64,7 @@ describe("2. the harm cases: an override never answers a question (M102 spec 12)
           continue;
         }
         if (first.rowsHash === undefined) {
-          guarded++;
+          tally(name, "guarded");
           const again = await r.override("y");
           if (again.receipt?.reason !== "menu_open" || screen.writes.length > 0 || screen.keys.length > 0) wrong.push(`${name}: guarded, then ${again.receipt?.outcome ?? "-"}(${again.receipt?.reason ?? "-"})`);
           continue;
@@ -60,10 +72,11 @@ describe("2. the harm cases: an override never answers a question (M102 spec 12)
         const answer = await r.send("y", { rowsHash: first.rowsHash, override: true, fromPhone: true });
         const typed = answer.receipt?.outcome === "typed_not_submitted" && answer.receipt.reason === "override" && answer.receipt.menuSign !== undefined && answer.receipt.menuSign.kind !== "single-key";
         if (!typed || answer.receipt?.keys.length !== 0 || screen.keys.length > 0 || screen.writes.length !== 1) wrong.push(`${name}: ${answer.receipt?.outcome ?? "-"}(${answer.receipt?.reason ?? "-"}) keys=${screen.keys.join(",")}`);
-        else passed++;
+        else tally(name, "passed");
       }
       expect(wrong).toEqual([]);
-      expect({ passed, guarded }).toEqual({ passed: 266, guarded: 456 });
+      expect(upstream).toEqual({ passed: 266, guarded: 456 });
+      expect(local).toEqual(localDialogs);
     }, WALK_TIMEOUT_MS);
   }
 });

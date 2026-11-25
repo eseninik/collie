@@ -2804,6 +2804,38 @@
   "frame": null
  },
  {
+  "fixture": "claude--v2327-effort-dialog.ansi.txt",
+  "frame": {
+   "top": 34,
+   "prompt": 35,
+   "bottom": 36,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 37,
+    "last": 38
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2327-effort-dialog.txt",
+  "frame": {
+   "top": 34,
+   "prompt": 35,
+   "bottom": 36,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 37,
+    "last": 38
+   },
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--v2331-draft-scrolled-up--w59.txt",
   "frame": {
    "top": 1,

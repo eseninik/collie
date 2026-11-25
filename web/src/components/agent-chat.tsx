@@ -68,6 +68,8 @@ import { shortcutTarget } from "@/lib/shortcuts/target";
 import { cn } from "@/lib/utils";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
+import { findProfile, loadProfiles } from "@/lib/surface/profile";
+import { directSendProfile } from "@/lib/surface/profiles/direct-send";
 import { adapterFor, buildBlocks, rendersNativeMirror } from "@/lib/harness";
 import { waitingQuestionNote } from "@/lib/question-waiting";
 import { blockOwnsKeyboard } from "@/lib/harness/dialog-contract";
@@ -377,6 +379,7 @@ export function AgentChat({
     [scope, paneId],
   );
   const agentNative = rendersNativeMirror(agent?.agent);
+  const directMessages = directSendProfile(findProfile(loadProfiles(), agent?.agent ?? "")?.id);
   const mirrorNative = rendersNativeMirror(agent?.agent, mirrorOverride);
   const setMirrorNative = useCallback(
     (next: boolean) => {
@@ -3336,13 +3339,13 @@ export function AgentChat({
                   // pane the bridge has not answered lately, and a dialog on screen (its answer
                   // is the dialog's, and these keys would give it).
                   onSendQueuedNow={
-                    readOnly || hostBlock !== undefined || actsDisabledByCache || connecting || dialogPresent || !paneLive
+                    directMessages || readOnly || hostBlock !== undefined || actsDisabledByCache || connecting || dialogPresent || !paneLive
                       ? undefined
                       : handleSendQueuedNow
                   }
                   // The same gates: a returned card acts on the input box.
                   onReturned={
-                    readOnly || hostBlock !== undefined || actsDisabledByCache || connecting || dialogPresent || !paneLive
+                    directMessages || readOnly || hostBlock !== undefined || actsDisabledByCache || connecting || dialogPresent || !paneLive
                       ? undefined
                       : handleReturned
                   }

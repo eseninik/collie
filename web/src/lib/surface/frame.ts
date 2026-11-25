@@ -1118,8 +1118,9 @@ export function overlayInRows(rows: readonly FrameRow[], indices: readonly numbe
  * The input frame on a screen read, or null.
  *
  * The bottom edge is the lowest row that matches the bottom anchor at its column, at most
- * `maxTailRows` rows above the last non-blank row. Only that row is tried: when its frame does not
- * close, there is no frame. A box higher up is an echo in the transcript, not the live one. A box
+ * `maxTailRows` rows above the last non-blank row. A blank-top box may wrap its bottom status into
+ * adjacent indented rows; that one band starts at its first matching row. Only that edge is tried:
+ * when its frame does not close, there is no frame. A box higher up is an echo, not the live one. A box
  * with blank edges (no edge glyphs) is read strictly: every interior row is blank or indented, the
  * blank top edge sits straight over the prompt row, and two blank rows in a row end the box.
  */
@@ -1228,6 +1229,21 @@ function popupRun(rows: readonly FrameRow[], frame: Frame, idle: IdleProfile): b
   return popupUnder(rows.map(rowText), frame.bottom, frame.interior.text, idle.volatile.below.popups) !== null;
 }
 
+/** A blank-top box's wrapped status is one edge, even when a continuation matches its pattern. */
+function wrappedBottomStart(rows: readonly FrameRow[], bottom: number, idle: IdleProfile): number {
+  if (!blankTop(idle)) return bottom;
+  const c = compile(idle);
+  // As many rows as the profile lets stand under the box (`volatile.below.maxRows`).
+  const floor = Math.max(0, bottom - idle.volatile.below.maxRows);
+  let first = bottom;
+  for (let i = bottom - 1; i >= floor; i--) {
+    const text = rowText(rows[i]!);
+    if (isBlank(text) || textColumn(text) < c.bottom.column) break;
+    if (anchored(text, c.bottom) !== null) first = i;
+  }
+  return first;
+}
+
 function findLayout(rows: readonly FrameRow[], idle: IdleProfile): Frame | null {
   const c = compile(idle);
   let end = rows.length;
@@ -1237,7 +1253,7 @@ function findLayout(rows: readonly FrameRow[], idle: IdleProfile): Frame | null 
   // or up to `maxWidgetRows` above it when those rows are one unbroken run of a widget ({@link openFrame}).
   if (c.bottom.open) return openFrame(rows, end, idle) ?? listedLayout(rows, end, idle);
   for (let b = end - 1; b >= 0 && end - 1 - b <= idle.frame.maxTailRows; b--) {
-    if (anchored(rowText(rows[b]!), c.bottom) !== null) return frameAt(rows, b, idle);
+    if (anchored(rowText(rows[b]!), c.bottom) !== null) return frameAt(rows, wrappedBottomStart(rows, b, idle), idle);
   }
   return listedLayout(rows, end, idle);
 }

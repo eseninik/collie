@@ -237,6 +237,9 @@ describe("parity with the old walk on the real corpus", () => {
     "claude--v2323-rc-on-idle-usage--w100.txt",
     "claude--v2323-rc-on-running--w100.txt",
     "claude--v2323-rc-on-slash-list--w100.txt",
+    // A complete Effort modal still owns keys, but these raw 2.1.327 captures also draw an empty frame.
+    "claude--v2327-effort-dialog.ansi.txt",
+    "claude--v2327-effort-dialog.txt",
     // A draft taller than the box (2.1.331): the `↑ 5 more` edge stands where the `❯` row would be.
     "claude--v2331-draft-scrolled-up--w59.txt",
     "claude--working-esc-to-interrupt.txt",

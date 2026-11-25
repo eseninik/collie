@@ -14,9 +14,10 @@ import { DIALOG, FakePane, rig, useScratchDir } from "./protocol.rig.ts";
 const SENT =
   "This message is long enough that in a small pane it wraps past the height of the Claude Code input box. When that happens Claude Code scrolls the box and draws an up arrow with a count of hidden lines in the top border, and the prompt line with the caret scrolls out of view. Collie looks for that prompt line to find the box, so it cannot find it, and the send stops after typing without pressing Enter.";
 const FIXTURE = join(import.meta.dirname, "..", "..", "web", "src", "fixtures", "panes", "claude--v2331-draft-scrolled-up--w59.txt");
+const CAPTURE = readFileSync(FIXTURE, "utf8");
 
 describe("Claude Code 2.1.331 box scrolled to `↑ 5 more` after a 404-char send", () => {
-  const rows = splitLines(parseAnsi(readFileSync(FIXTURE, "utf8")));
+  const rows = splitLines(parseAnsi(CAPTURE));
   const read = surfaceOfScreen({ seq: 0, source: "screen", at: 0, revision: 1, rows, ask: null }, loadProfiles().get("claude")!.idle);
 
   test("the screen reads as an idle box holding a draft, not unknown/no-match", () => {
@@ -73,6 +74,21 @@ const idle = loadProfiles().get("claude")!.idle;
 const readOf = (text: string): ReturnType<typeof surfaceOfScreen> =>
   surfaceOfScreen({ seq: 0, source: "screen", at: 0, revision: 1, rows: splitLines(parseAnsi(text)), ask: null }, idle);
 
+function capturedScrollPane(scrolled: string): FakePane {
+  const pane = new FakePane();
+  pane.transcript = [];
+  // The captured send stayed as literal text. Keep the same footer when the box is empty.
+  pane.collapseOver = SENT.length;
+  const rows = CAPTURE.split(/\r?\n/u);
+  const bottom = rows.findLastIndex((row) => row.includes("───"));
+  pane.render = () => {
+    const input = pane.box === "" ? `\u001b[2m${pane.placeholder}\u001b[0m` : pane.box;
+    const screen = pane.box === SENT ? scrolled : ["", rows[bottom], `❯ ${input}`, ...rows.slice(bottom)].join("\n");
+    return [...pane.transcript, screen].join("\n");
+  };
+  return pane;
+}
+
 describe("a send into a Claude box that scrolls while Collie types", () => {
   test("an empty box, a long send: the box scrolls, S1 confirms by the tail, Enter goes, sent", async () => {
     const pane = new ScrolledClaudePane();
@@ -96,7 +112,92 @@ describe("a send into a Claude box that scrolls while Collie types", () => {
     expect(pane.transcript.some((row) => row.includes("up arrow"))).toBe(false);
   });
 
-  test("the person's draft ending in blank rows (a scrolled box whose view is blank) is no empty box: refused, no key", async () => {
+  test("@req:PORT-1301-CLAUDE-SCROLL @oracle:requirement a phone send uses Enter once when the scrolled box shows the captured tail of the reply", async () => {
+    const pane = capturedScrollPane(CAPTURE);
+    expect(readOf(pane.render()).surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+    const answer = await rig({ pane, version: "2.1.331", block: true }).send(SENT, { fromPhone: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(pane.keysSeen).toEqual(["Enter"]);
+    expect(pane.transcript).toEqual([`> ${SENT}`]);
+    expect(pane.box).toBe("");
+  });
+
+  test("@req:PORT-1301-CLAUDE-SCROLL @oracle:requirement a phone send leaves the reply in place when the scrolled box shows a different tail", async () => {
+    const pane = capturedScrollPane(CAPTURE.replace("without pressing Enter.", "after pressing Enter."));
+    const answer = await rig({ pane, version: "2.1.331", block: true }).send(SENT, { fromPhone: true });
+    expect(answer.receipt).toBeDefined();
+    expect(answer.receipt?.outcome).not.toBe("sent");
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.transcript).toEqual([]);
+    expect(pane.box).toBe(SENT);
+  });
+
+  test("@req:FIX-1301-CLAUDE-SCROLL @oracle:requirement a new phone send replaces its own scrolled reply left by a failed send", async () => {
+    const pane = capturedScrollPane(CAPTURE.replace("without pressing Enter.", "after pressing Enter."));
+    const { send } = rig({ pane, version: "2.1.331", block: true });
+
+    const first = await send(SENT, { fromPhone: true });
+    expect(first.receipt).toMatchObject({ outcome: "typed_not_submitted" });
+    expect(readOf(pane.render()).frame?.scrolled).toBe(true);
+    expect(pane.box).toBe(SENT);
+    expect(pane.keysSeen).toEqual([]);
+    expect(pane.transcript).toEqual([]);
+
+    const replacement = "Check the phone layout instead.";
+    const second = await send(replacement, { fromPhone: true });
+    expect(second.receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.keysSeen).toEqual([...Array.from(SENT, () => "Backspace"), "Enter"]);
+    expect(pane.transcript).toEqual([`> ${replacement}`]);
+    expect(pane.box).toBe("");
+  });
+
+  test("@req:FIX-1301-CLAUDE-SCROLL @oracle:requirement a phone send leaves a foreign scrolled draft untouched", async () => {
+    const pane = new ScrolledClaudePane();
+    const draft = "A draft I typed at the desk\nIt contains enough lines\nto scroll out of the box\nThese last rows are still visible.";
+    pane.box = draft;
+    expect(readOf(pane.render()).frame?.scrolled).toBe(true);
+    const { send } = rig({ pane, version: "2.1.331", block: true });
+    const answer = await send("Check the phone layout instead.", { fromPhone: true });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: [] });
+    expect(answer.offers).toEqual(["keys"]);
+    expect(pane.keysSeen).toEqual([]);
+    expect(pane.calls).toEqual([]);
+    expect(pane.box).toBe(draft);
+  });
+
+  test("@req:FIX-1301-CLAUDE-SCROLL @oracle:requirement a phone send preserves a scrolled reply edited at the terminal after a failed send", async () => {
+    const leftOnScreen = CAPTURE.replace("without pressing Enter.", "after pressing Enter.");
+    const pane = capturedScrollPane(leftOnScreen);
+    const { send } = rig({ pane, version: "2.1.331", block: true });
+    const first = await send(SENT, { fromPhone: true });
+    expect(first.receipt).toMatchObject({ outcome: "typed_not_submitted" });
+    expect(pane.box).toBe(SENT);
+    expect(pane.keysSeen).toEqual([]);
+
+    const draft = SENT.replace("without pressing Enter.", "after my own edit.");
+    const editedOnScreen = CAPTURE.replace("without pressing Enter.", "after my own edit.");
+    const render = pane.render;
+    pane.box = draft;
+    pane.revision++;
+    pane.render = () => pane.box === draft ? editedOnScreen : render();
+    const edited = readOf(pane.render());
+    expect(edited.frame?.scrolled).toBe(true);
+    expect(edited.frame?.interior.text).toContain("after my own edit.");
+    const writes = [...pane.calls];
+
+    const second = await send("Check the phone layout instead.", { fromPhone: true });
+    expect(second.receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: [] });
+    expect(second.offers).toEqual(["keys"]);
+    expect(pane.keysSeen).toEqual([]);
+    expect(pane.calls).toEqual(writes);
+    expect(pane.transcript).toEqual([]);
+    expect(pane.box).toBe(draft);
+  });
+
+  test.each([
+    ["the person's draft ending in blank rows (a scrolled box whose view is blank) is no empty box: refused, no key", {}],
+    ["@req:PORT-1301-CLAUDE-SCROLL @oracle:requirement a phone send refuses before any write when blank visible rows hide an existing draft", { fromPhone: true }],
+  ] as const)("%s", async (_name, request) => {
     const pane = new ScrolledClaudePane();
     const draft = "rm -rf the build folder and then push to main\nsecond line of my own words\n\n\n";
     pane.box = draft;
@@ -105,9 +206,10 @@ describe("a send into a Claude box that scrolls while Collie types", () => {
     expect(s0.frame?.interior.text).toBe("");
     expect(s0.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
     const { send } = rig({ pane });
-    const answer = await send("yes please");
+    const answer = await send("yes please", request);
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: [] });
     expect(pane.calls).toEqual([]);
+    expect(pane.keysSeen).toEqual([]);
     expect(pane.box).toBe(draft);
   });
 

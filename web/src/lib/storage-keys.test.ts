@@ -59,6 +59,7 @@ const KEYS = new Map<string, KeyFate>([
   ["collie:session-later", { area: "local", prefix: false, fate: "wiped", why: "decision ids of this pairing's trick proposals, closed in their session" }],
   ["collie:recent-panes:v1", { area: "local", prefix: false, fate: "wiped", why: "the panes this device opened last: pane addresses and workspace names (lib/recent-panes.ts)" }],
   ["collie:slot:v1:", { area: "local", prefix: true, fate: "wiped", why: "the last pane address and workspace name of each browser tile" }],
+  ["collie:session-order:v1", { area: "local", prefix: false, fate: "wiped", why: "the names of this device's sessions, in the operator's order" }],
   // Written first by the wipe and removed last; present only while a wipe is unfinished (lib/wipe.ts).
   ["collie:wipe-pending", { area: "local", prefix: false, fate: "wiped", why: "a wipe's resume mark" }],
   // The project pictures (lib/project-picture.ts, ADR 0160): the page's own small copies, and which pane shows which.

@@ -579,6 +579,9 @@ export const ANOTHER_SEND = "Another send on this pane is still running.";
  */
 export const STALE_SCREEN = "The screen shows an input box that does not take keys. The pane may need a redraw; focus it on the desktop or resize it.";
 
+/** A draft whose hidden rows prevent a bounded clear. */
+export const TALL_DRAFT = "The draft is taller than the box, so Collie cannot see how long it is. Nothing was deleted. Empty the box with the key pad, then send again.";
+
 /**
  * The offers that go with an outcome and reason. A pane with no frame cannot prove a draft, so it gets the key pad instead.
  * A command onto a draft (`command`) is offered Replace and Cancel only: Add would send the draft with the command at its end.

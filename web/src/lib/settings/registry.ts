@@ -255,6 +255,7 @@ export const NOT_SETTINGS: ReadonlyMap<string, string> = new Map([
   ["collie:shape:", "remembered page shapes for a calm first frame"],
   ["collie:derived:v1", "a cache of the colours derived from the applied theme: applyTheme rebuilds it, theme-init.js reads it for the first frame"],
   ["collie:session-later", "trick proposals closed with Not now"],
+  ["collie:session-order:v1", "the session list's remembered order: a view's state"],
   ["collie:recent-panes:v1", "the panes this device opened last"],
   ["collie:slot:v1:", "a pane's reserved layout slot"],
   ["collie:wipe-pending", "an unpair's unfinished wipe"],

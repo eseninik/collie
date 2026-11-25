@@ -198,7 +198,7 @@ export const en = {
     "Auto shows the sidebar and pane columns on a screen at least 600 px wide and 480 px tall. Off keeps the phone layout everywhere.",
   "settings.enterSends.title": "Enter sends",
   "settings.enterSends.hint":
-    "With a physical keyboard, Enter sends the message and Shift+Enter adds a new line. With the on-screen keyboard, Enter always adds a new line.",
+    "Send with Enter on a physical keyboard. Shift+Enter adds a line. Ordinary Claude and Codex messages use Enter on either keyboard, even with this setting off.",
   "settings.projectPictures.title": "Project pictures",
   "settings.projectPictures.hint":
     "Show the picture a repository names in its collie.toml in place of the agent logo, with the logo in the corner, and as the icon of its pushes.",
@@ -704,6 +704,7 @@ export const en = {
   "composer.protocol.overrideMoved": "The screen changed before your text went in, so nothing was typed. Look at the screen now, then tap Send, then Send anyway.",
   "composer.protocol.overrideTyped": "Your text is in the agent's box. Collie pressed no Enter. Check the screen, then press Enter on the Keys pad.",
   "composer.protocol.draftUnseen": "The input box holds a draft that Collie cannot read whole, so nothing was typed. The button \"Empty the box\" deletes that draft. Then send again.",
+  "composer.protocol.tallDraft": "The draft is taller than the box, so Collie cannot see how long it is. Nothing was deleted. Empty the box with the key pad, then send again.",
   "composer.step.sendAgain": "Send again",
   "composer.step.stop": "Stop the turn",
   "composer.step.emptyBox": "Empty the box",
@@ -1815,6 +1816,7 @@ export const en = {
   "connection.stale.messageTemplate": "{reason}. {detail}",
   "connection.session.title": "Spaces",
   "connection.session.aria": "Space: {name}. Switch space",
+  "connection.session.moveAria": "Move {name}",
   "connection.session.primary": "primary",
   "connection.session.unreachable": "unreachable",
   "connection.session.ariaIn": "In space: {name}",

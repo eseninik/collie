@@ -3,7 +3,14 @@
 // one receipt, a closed list of outcomes. The box is proven by what typing does, not by what it looks
 // like, and the submit key leaves only through the key gate.
 //
-// Steps, each bounded as (max reads, max ms):
+// Direct phone messages on the owner's selected profiles (profiles/direct-send.ts) use one fresh
+// S0 read and the existing Replace clear, without Collie's hold queue or send probes. Only an
+// unstyled placeholder needs the existing draft proof, so clearing never acts on a suggestion. S1 submits through
+// compare/redraw differences, but a modal, another screen or no input box still stops the send.
+// Commands, explicit steers and other callers keep the protocol below. A direct Codex send whose
+// submit was swallowed gets one retry on a fresh safe box read, never a retry loop.
+//
+// Steps for the guarded path, each bounded as (max reads, max ms):
 //   accept  write `<stateDir>/sends/<id>.json` before any key; the same id returns the same receipt
 //   S0      (2, 1200) a fresh read after the request arrived, stable across two mux calls; the
 //           Surface must be free, or unknown(no-match) with the hash of the rows the person saw
@@ -145,7 +152,7 @@
 // Discard). With no length known the request is refused `draft_present` before any key, so a clear
 // never stops half way through a person's draft (omp gang, 2026-10-25).
 //
-// A draft read is a reading until a probe proves it (2026-10-25): a pane can keep a stale image of an
+// Outside the direct path, a draft read needs a probe (2026-10-25): a pane can keep a stale image of an
 // earlier, taller layout at its foot (a resize that never reached a background pane), whose editor row
 // shows a draft while the live editor, drawn higher up, is empty. So no request acts on an idle box's
 // draft before a probe: a send or command it would refuse `draft_present`, an Add to it, a Replace, a
@@ -294,14 +301,15 @@ import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.t
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
 import { noEchoPromptIn } from "../../web/src/lib/no-echo.ts";
-import { isUploadImagePath, pastePieces } from "../../web/src/lib/upload-path.ts";
+import { isImagePath, isUploadImagePath, pastePieces } from "../../web/src/lib/upload-path.ts";
 import { BAD_HEAD, hasViewHead, VIEW_NO_PROFILE } from "../../web/src/lib/agent-view/wire.ts";
-import { pointsAt, staleListUnder } from "../../web/src/lib/surface/command-list.ts";
+import { enterTypesText, pointsAt, staleListUnder } from "../../web/src/lib/surface/command-list.ts";
 import type { PopupRead } from "../../web/src/lib/surface/popup.ts";
 import { ANCHOR_ROWS, menuSign, type MenuBox, type MenuSign } from "../../web/src/lib/surface/menu-sign.ts";
 import type { PaneForeground } from "../pane-binary.ts";
 import type { PaneLockFiles } from "./pane-lock.ts";
 import { commandListAnyText, commandListAt, isRunningRow, noticeOver, ownCommandList, popupAt, readCues, readCuesFor, runningSign, withoutCommandList, withoutPopup, withoutPromptEchoes, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
+import { directSend, directSendNeedsStableFooter, retrySubmitProfile } from "../../web/src/lib/surface/profiles/direct-send.ts";
 import { loadProfiles } from "../../web/src/lib/surface/profile.ts";
 import { inputFrameOf, surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { boxInk, findInputFrame, readIsUnstyled, rowText, spanInk, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
@@ -335,6 +343,7 @@ import {
   type HeldRow,
   STALE_SCREEN,
   ANOTHER_SEND,
+  TALL_DRAFT,
 } from "../../web/src/lib/surface/send.ts";
 import { askOf, frameImageKey, isFree, shortHash, type Surface, type SurfaceTurn } from "../../web/src/lib/surface/surface.ts";
 import { closingReceipt, normalizePrompt, receiptWindowMs, type OpenReceipt } from "../../web/src/lib/surface/edges.ts";
@@ -542,7 +551,12 @@ interface LeftTyped {
   /** The text's lines as written, joined by a line break. */
   readonly text: string;
   readonly at: number;
+  /** The scrolled frame read after an acknowledged direct write into an empty box. */
+  readonly scrolledImage: string | null;
 }
+
+/** Measured at the box, or exact from an acknowledged write into that box. */
+type DraftLength = { readonly chars: number; readonly exact?: true };
 
 /**
  * Whether a request's typed text may be remembered as left in the box, and finished by a later send: a
@@ -599,8 +613,6 @@ const CLEAR_READ_MS = CLEAR_BOUND.ms / CLEAR_BOUND.reads;
 const CLEAR_SPARE_READS = 2;
 /** The longest draft one request empties: 64 batches, about 33 s. A longer one is refused before any key. */
 const CLEAR_MAX_CHARS = 16_384;
-/** The detail of a Replace or Discard refused on a box that hides the head of a draft Collie cannot measure. */
-const TALL_DRAFT = "The draft is taller than the box, so Collie cannot see how long it is. Nothing was deleted. Empty the box with the key pad, then send again.";
 /** The detail of a Replace or Discard refused on a draft longer than one request empties. */
 const LONG_DRAFT = "The draft is longer than Collie empties in one request. Nothing was deleted. Empty the box with the key pad, then send again.";
 /** The detail of a receipt whose S1 compared only the rows a scrolled box showed with the end of the text. */
@@ -1120,6 +1132,13 @@ function mark(snap: Snap | null): ReadMark | null {
 /** What a frame says about the box: its text, or "" when it shows the placeholder. */
 function boxText(frame: Frame): string {
   return frame.placeholder ? "" : frame.interior.text;
+}
+
+/** An image of a scrolled conversation draft, including its reported number of hidden rows. */
+function scrolledDraftImage(snap: Snap | null): string | null {
+  if (snap?.frame?.scrolled !== true || snap.surface.composer !== "draft") return null;
+  if (snap.surface.modal !== "none" || snap.otherScreen !== null || snap.notice !== null || snap.popup !== null || snap.cueStrength !== "none") return null;
+  return frameImageKey(snap.texts, snap.frame.top, snap.frame.bottom);
 }
 
 const CUE_RANK = { none: 0, weak: 1, strong: 2 } as const;
@@ -1999,6 +2018,12 @@ function isSecretSend(state: RunState): boolean {
   return state.request.secret === true || state.secretField === true;
 }
 
+/** The direct phone policy never changes a field the current screen identified as a sign-in secret. */
+function directPhoneSend(state: RunState): boolean {
+  return !isSecretSend(state) && directSend(state.match, state.request);
+}
+
+
 function answersQuestion(match: ProfileMatch | null, snap: Snap): boolean {
   if (snap.frame?.answers === true) return true;
   const source = match?.profile.idle.answerPrompt;
@@ -2257,6 +2282,12 @@ const COMMAND_IN_TURN = "A command waits until the turn ends.";
 /** The detail of a command the profile never lets wait in a turn (`keys.neverHeld`). */
 const NEVER_HELD = "Collie does not queue this command during a turn. Send it when the turn ends.";
 
+/** Whether a text is a shell line (`!`): never held by Collie, whatever the profile lets the harness queue. */
+function shellLine(text: string): boolean {
+  // The line as it is typed: paste markers and control bytes are cut first, as sendLines cuts them.
+  return (sendLines(text)[0] ?? "").trimStart().startsWith("!");
+}
+
 /**
  * The profile's entry in `keys.neverHeld` that a text matches, or null. A one-character entry (`!`)
  * matches every line that starts with it; a longer one matches the command word alone or followed by
@@ -2419,6 +2450,8 @@ function listPointsElsewhere(snap: Snap, prefix: string, lines: readonly string[
   const list = snap.commandList ?? snap.listAnyText;
   if (list === null || list.pointed === null || snap.frame === null) return false;
   if (!commandBoxMatches(boxText(snap.frame), prefix, lines, collapse)) return false;
+  // A harness whose Enter takes such a text as typed never picks the pointed row (Claude's bash-mode completion).
+  if (enterTypesText(rows, prefix + lines.join(""))) return false;
   return !pointsAt(list, prefix + lines.join(""), rows);
 }
 
@@ -2662,11 +2695,13 @@ function isImageFile(path: string): boolean {
  * lone upload path of any length ({@link uploadAlone}), and never
  * for a text that starts with a reserved lead: a slash command, a shell line or a file mention keeps
  * the write it has always had, so the harness reads the lead as typed. With the profile's image
- * token, the pieces that are Collie's own uploads (the shape the web adapter's `liftedPaste` reads,
- * `web/src/lib/upload-path.ts`) and still a file on this disk come off the paste the way the harness
- * takes them (lab, Claude Code 2.1.305: `<text> /shot.jpg` shows `[Image #1][Pasted text #2]`); the
- * kept pieces stay, joined by newlines. Any other image path stays text here: the harness may still
- * take it, and then the box does not match and the send stalls instead of guessing.
+ * token, the pieces that are an absolute image path ({@link isImagePath}) and a file on this disk come
+ * off the paste the way the harness takes them, in any folder (lab, Claude Code 2.1.305:
+ * `<text> /shot.jpg` shows `[Image #1][Pasted text #2]`; 2.1.306, 2026-11-05, the same outside
+ * `uploads`). The kept pieces are joined by newlines, without the blank ones and without an image path
+ * that is not a file (2.1.306, 2026-11-05: `<2 lines>\n\n<2 lines>\n\n/shot.png` shows `+3 lines`, and
+ * `<4 lines> /missing.png /shot.png` shows `+3 lines`). With no image the paste stays as sent. A box that
+ * kept such a path as text still proves the send ({@link boxMatches}, `literal`).
  */
 export function wholePaste(match: ProfileMatch | null, lines: readonly string[], imageFile: (path: string) => boolean = isImageFile): WholePaste | null {
   const paste = match?.profile.paste;
@@ -2680,9 +2715,10 @@ export function wholePaste(match: ProfileMatch | null, lines: readonly string[],
   if (paste.image === undefined) return { images: 0, image: null, lines, literal: lines, ...counted };
   const image = new RegExp(paste.image, "uy");
   const pieces = pastePieces(text);
-  const kept = pieces.filter((piece) => !(isUploadImagePath(piece) && imageFile(piece.trim())));
-  const images = pieces.length - kept.length;
-  return { images, image, lines: images === 0 ? lines : kept.join("\n").split("\n"), literal: lines, ...counted };
+  const images = pieces.filter((piece) => isImagePath(piece) && imageFile(piece.trim())).length;
+  if (images === 0) return { images, image, lines, literal: lines, ...counted };
+  const kept = pieces.filter((piece) => !isImagePath(piece) && piece.trim().length > 0);
+  return { images, image, lines: kept.join("\n").split("\n"), literal: lines, ...counted };
 }
 
 /**
@@ -3112,6 +3148,8 @@ interface RunState {
    * send of the same text that finds exactly it in the box presses only the submit key.
    */
   writeUnseen?: boolean;
+  /** The direct write into an empty box completed, with every write acknowledged. */
+  wroteIntoEmptyBox?: boolean;
   /**
    * The box stood at its scroll height and showed only the end of the text: S1 (or Submit and
    * Discard's own check) compared those rows with the end of the text (boxHolds). The receipt says so.
@@ -3153,6 +3191,8 @@ interface RunState {
    * runs it; the draft is not asked, everything else is.
    */
   overDraft?: boolean;
+  /** A release into a running turn (`HeldEntry.intoTurn`): a pane not ready sends it back without spending a try. */
+  intoTurn?: boolean;
   /** The turn gate refused a command the profile never lets wait (`keys.neverHeld`): it is not held either. */
   neverHold?: boolean;
   /** A release met a box that answers the agent's question (`idle.answerPrompt`): it waits, and the try does not count. */
@@ -3202,6 +3242,8 @@ interface PaneWatch {
   sawRunning: boolean;
   /** Polls in a row that read the pane free. */
   freeReads: number;
+  /** Polls in a row that read the turn running over an empty box with nothing open at it ({@link intoTurnFree}). */
+  turnFreeReads?: number;
   /** When the first of those free polls came; null while the run is empty. */
   freeSince: number | null;
   /**
@@ -3238,6 +3280,23 @@ const PLACEHOLDER_UNPROVEN = "The box reads as a draft, and the probe could not 
 
 /** Polls in a row a pane must read free, after a running turn, before its oldest held request goes. */
 const FREE_POLLS = 2;
+
+/**
+ * Whether a poll reads a box that takes a send into the running turn (owner, 2026-11-12: every send
+ * reaches the terminal at once): the turn runs, nothing is open at the box and the box is empty. A
+ * request held for this (`HeldEntry.intoTurn`) goes on {@link FREE_POLLS} such polls in a row; its run
+ * reads S0 fresh and takes the queued path, so a dialog that opens meanwhile still stops it before any key.
+ */
+/**
+ * The most releases into a running turn one held request gets (review, 2026-11-12): a poll and S0 may read
+ * the box differently (a numbered list over the box reads strong to S0 only), and each such release spends
+ * no try. After these it waits for the turn to end, as every other hold does.
+ */
+const IN_TURN_RELEASES = 8;
+
+function intoTurnFree(surface: Surface): boolean {
+  return surface.turn === "running" && surface.modal === "none" && surface.composer === "empty";
+}
 /**
  * With no running turn read since the last release: the polls in a row, and the time they must span,
  * before the next held request goes anyway. A released command that starts no turn (/help, /status),
@@ -3477,6 +3536,8 @@ export class SendProtocol {
    * offer is a yes to one draft, {@link offerDraftSeen}).
    */
   private readonly issued = new Map<string, { readonly loose: string; readonly draft: string | null }>();
+  /** Per held request: its releases into a running turn so far ({@link IN_TURN_RELEASES}). In memory only. */
+  private readonly inTurnReleases = new Map<string, number>();
 
   constructor(private readonly deps: SendDeps) {
     this.now = deps.now ?? (() => Date.now());
@@ -3735,8 +3796,12 @@ export class SendProtocol {
     const stored = record.receipt;
     if (stored !== undefined) {
       // A command's draft refusal offers no Add on a replay either: the same rule, read from the same request.
-      const command = stored.reason === "draft_present" && draftCommand(request, await this.deps.profile(target.harness, target.paneId));
-      const replay: SendAnswer = { receipt: stored, offers: offersFor(stored.outcome, stored.reason, stored.profileId !== null, command), replayed: true };
+      const match = await this.deps.profile(target.harness, target.paneId);
+      const command = stored.reason === "draft_present" && draftCommand(request, match);
+      // New receipts replay the actions decided on their original screen, including sign-in fields.
+      // Older records have no saved actions and keep their compatibility rule.
+      const offers = record.offers ?? (directSend(match, request) && stored.cap === undefined ? [] : offersFor(stored.outcome, stored.reason, stored.profileId !== null, command));
+      const replay: SendAnswer = { receipt: stored, offers, replayed: true };
       // A send a crash cut short: read the pane now and report it beside the stored receipt. One cut
       // short after its first key (`interrupted`, M102 spec 16) also carries the rows now: text may be in the box.
       if (stored.outcome !== "unknown" || (stored.reason !== "crash" && stored.reason !== "interrupted")) return replay;
@@ -3828,12 +3893,12 @@ export class SendProtocol {
     // Nor does the person's override (M102 spec 01 and 12): it is for the screen the person sees now.
     const joins = holds !== undefined && JOINS.has(request.mode) && waiting.length > 0 && !draftOnly && request.when !== "steer" && request.secret !== true && !overrideAsked(request);
     const match = joins ? ((await this.deps.profile(target.harness, target.paneId)) ?? (await this.heldPlainProfile(request, waiting, target.paneId, generation))) : null;
-    if (match !== null && !(request.mode === "command" && runsInTurnEntry(request.text, match) !== null)) {
+    if (match !== null && !directSend(match, request) && !(request.mode === "command" && runsInTurnEntry(request.text, match) !== null)) {
       const state = this.bareState(request, record, target, match);
       const refusal = textRefusal(request, match);
       if (refusal !== null) return this.settle(state, refusal);
       // A command the profile never lets wait is refused, never held: it would act on a later session.
-      if (state.command && neverHeldEntry(request.text, match) !== null) return this.settle(state, new Ended("refused", "turn_running", { detail: NEVER_HELD }));
+      if (state.command && (neverHeldEntry(request.text, match) !== null || shellLine(request.text))) return this.settle(state, new Ended("refused", "turn_running", { detail: NEVER_HELD }));
       return this.hold(state, new Ended("refused", "turn_running", { detail: HELD_BEHIND }));
     }
     return this.run(request, record, target);
@@ -3885,8 +3950,8 @@ export class SendProtocol {
    * behind it, and its release carries no rows hash for the confirm. A `replace` whose text starts with
    * a reserved lead is a command here too.
    */
-  private holdsEnd(state: RunState, end: Ended): boolean {
-    if (this.deps.holds === undefined || end.outcome !== "refused") return false;
+  private holdsEnd(state: RunState, end: Ended, dataRoad = false): boolean {
+    if ((!dataRoad && directPhoneSend(state)) || this.deps.holds === undefined || end.outcome !== "refused") return false;
     // A send from an agent view never queues: the person taps again once the session is free.
     if (state.request.view !== undefined) return false;
     // An override is never held (M102 spec 01): the hold queue would type it later, on a screen nobody saw.
@@ -3900,6 +3965,8 @@ export class SendProtocol {
     // A draft proven live by its probe (2026-10-25) left the box as it was: it holds like an unprobed one did.
     if (state.keys.length > 0 && !clean && !(end.reason === "draft_present" && (probeOnly(state) || state.placeholderProbe !== null))) return false;
     if (!HOLDABLE.has(state.request.mode) || state.neverHold === true) return false;
+    // A shell line goes to the harness's own queue or not at all: Collie typing it later would run it on a later machine state.
+    if (state.command && shellLine(state.request.text)) return false;
     if (end.reason === "turn_running") return true;
     if (state.manual || state.match === null) return false;
     const leads = state.match.profile.reservedLeads;
@@ -3913,7 +3980,10 @@ export class SendProtocol {
     const holds = this.deps.holds!;
     const { request, target } = state;
     if (holds.waiting(target.session, target.paneId).length >= HOLD_PANE_MAX) {
-      return this.settle(state, new Ended("refused", "busy", { detail: `This pane already holds ${String(HOLD_PANE_MAX)} messages. Cancel one, or wait for the turn to end.` }));
+      const detail = directPhoneSend(state)
+        ? `This pane already holds ${String(HOLD_PANE_MAX)} messages. Wait for the turn to end.`
+        : `This pane already holds ${String(HOLD_PANE_MAX)} messages. Cancel one, or wait for the turn to end.`;
+      return this.settle(state, new Ended("refused", "busy", { detail }));
     }
     if (holds.waitingCount() >= HOLD_BRIDGE_MAX) {
       return this.settle(state, new Ended("refused", "busy", { detail: `Collie already holds ${String(HOLD_BRIDGE_MAX)} messages on this machine. Cancel one, or wait for a turn to end.` }));
@@ -3934,7 +4004,12 @@ export class SendProtocol {
     const ahead = holds.waiting(target.session, target.paneId).at(-1)?.cause;
     const cause = end.extra.detail === HELD_BEHIND ? (ahead ?? "turn_running") : holdCauseOf(end);
     const unread = end.extra.detail === TURN_VERSION_UNREAD;
-    const input = { id: request.id, session: target.session, paneId: target.paneId, harness: target.harness, mode: request.mode, text: request.text, revision: request.revision ?? 0, command, waitsForTurn, cause, versionUnread: unread };
+    // A person's plain message to a harness that takes one in a turn need not wait for the turn's end:
+    // it goes once the box reads free in the turn (tickHolds). A command, an agent's message (walky
+    // talky, a hook, the CLI) and a marked send keep waiting for the turn as before.
+    const leads = state.match?.profile.reservedLeads ?? GENERIC_LEADS;
+    const intoTurn = request.fromPhone === true && request.mode === "send" && !command && request.draftHolds !== true && !unread && reservedLead(sendLines(request.text)[0] ?? "", leads) === null && queuesInTurn(state.match);
+    const input = { id: request.id, session: target.session, paneId: target.paneId, harness: target.harness, mode: request.mode, text: request.text, revision: request.revision ?? 0, command, waitsForTurn, cause, versionUnread: unread, intoTurn };
     if (request.draftHolds === true) {
       // A marked send keeps its caller's clock.
       let marked: HoldInput = { ...input, draftHolds: true };
@@ -3962,7 +4037,7 @@ export class SendProtocol {
     // expiry. So is a draft for a marked send (M62 spec 02): its own clock bounds it.
     const draft = end.reason === "draft_present" && entry?.draftHolds === true;
     // So is a box that is still starting: its own window bounds it.
-    const counted = state.answerWait !== true && state.startWait !== true && !draft;
+    const counted = state.answerWait !== true && state.startWait !== true && state.intoTurn !== true && !draft;
     if (entry === null || (counted && entry.tries + 1 >= HOLD_TRIES)) return this.settle(state, end);
     holds.putBack(state.record.id, counted);
     if (state.startWait === true) this.startWaits.add(state.record.id);
@@ -4014,7 +4089,7 @@ export class SendProtocol {
    * held (cancelled, already running, gone). The request file takes the pane's generation now: a session
    * id that resolved, or a /clear, since the hold is the same pane (the poll checked the agent).
    */
-  async release(id: string, overDraft = false): Promise<SendAnswer | null> {
+  async release(id: string, overDraft = false, intoTurn = false): Promise<SendAnswer | null> {
     const holds = this.deps.holds;
     const entry = holds?.get(id) ?? null;
     if (holds === undefined || entry === null || entry.state !== "held" || this.inFlight.has(id)) return null;
@@ -4024,10 +4099,12 @@ export class SendProtocol {
     watch.sawRunning = false;
     watch.freeReads = 0;
     watch.freeSince = null;
+    watch.turnFreeReads = 0;
     watch.pollSawRunning = false;
     watch.cleared = false;
     const record = this.deps.store.rearm(id, this.deps.generation(entry.paneId) ?? undefined);
     if (record === null) {
+      this.inTurnReleases.delete(id);
       holds.remove(id);
       return null;
     }
@@ -4036,13 +4113,14 @@ export class SendProtocol {
     if (entry.draftHolds === true) request = { ...request, draftHolds: true };
     if (entry.draftHolds === true && entry.walky !== undefined) request = { ...request, walky: entry.walky };
     const target: SendTarget = { session: entry.session, paneId: entry.paneId, harness: entry.harness };
-    const work = this.run(request, record, target, true, overDraft);
+    const work = this.run(request, record, target, true, overDraft, intoTurn);
     this.inFlight.set(id, work);
     let answer: SendAnswer;
     try {
       answer = await work;
     } catch (err) {
       // A throw that is not an end (a bug, a disk error): the request ends unknown, the text kept.
+      this.inTurnReleases.delete(id);
       holds.end(id, "unknown", "crash");
       throw err;
     } finally {
@@ -4060,6 +4138,7 @@ export class SendProtocol {
       watch.sawRunning = true;
       return answer;
     }
+    this.inTurnReleases.delete(id);
     if (outcome === "sent" || outcome === "effective") holds.remove(id);
     else holds.end(id, outcome ?? "unknown", answer.receipt?.reason);
     return answer;
@@ -4124,6 +4203,7 @@ export class SendProtocol {
       watch.missing = generation === null ? watch.missing + 1 : 0;
       let busy = false;
       let next: HeldEntry | null = null;
+      let firstIntoTurn: HeldEntry | null = null;
       for (const entry of entries) {
         if (entry.state === "running" || this.inFlight.has(entry.id)) {
           busy = true;
@@ -4151,6 +4231,9 @@ export class SendProtocol {
           holds.setHarness(entry.id, agentOfGeneration(generation));
         }
         next ??= entry;
+        // Only the oldest of a person's sends may go into the turn: one that spent its releases keeps the
+        // ones behind it waiting too, so the agent reads them in the order they were sent.
+        if (firstIntoTurn === null && entry.intoTurn === true) firstIntoTurn = entry;
       }
       if (next === null) {
         this.watches.delete(`${session}\u0000${paneId}`);
@@ -4177,6 +4260,7 @@ export class SendProtocol {
       // A free read clears a draft cause on a request no draft holds (live check W3): only a marked send is
       // held over a draft, and its own rule reads that cause.
       if (free) for (const entry of entries) if (entry.state === "held" && entry.draftHolds !== true && entry.cause === "draft_present") holds.setCause(entry.id, "not_free");
+      watch.turnFreeReads = surface !== undefined && intoTurnFree(surface) && !unseen ? (watch.turnFreeReads ?? 0) + 1 : 0;
       if (free) {
         watch.freeReads += 1;
         watch.freeSince ??= now;
@@ -4226,12 +4310,19 @@ export class SendProtocol {
       const tried = watch.placeholderTried;
       const untried = tried === undefined || tried.box !== plainDraft || (tried.failed && now - tried.at >= PLACEHOLDER_RETRY_MS);
       const placeholder = plainDraft !== null && watch.plainDraft != null && now - watch.plainDraft.since >= DRAFT_LEFT_MS && untried;
-      if (busy || !(afterTurn || turnEnded || quiet || draftLeft || cleared || placeholder)) continue;
-      if (this.deps.releaseCheck?.(next.id, session, paneId) === false) {
-        this.endHeldInTick(next, "refused", "pane_gone");
+      // A person's message to a harness that takes one in a turn goes into the turn once the box reads
+      // free there, ahead of requests that wait for the turn's end (owner, 2026-11-12: every send reaches
+      // the terminal at once). A poll that reads the turn reads no free pane, so the turn rules above never
+      // hold on the same poll.
+      const inTurn = firstIntoTurn !== null && (this.inTurnReleases.get(firstIntoTurn.id) ?? 0) < IN_TURN_RELEASES && watch.turnFreeReads >= FREE_POLLS;
+      if (busy || !(afterTurn || turnEnded || quiet || draftLeft || cleared || placeholder || inTurn)) continue;
+      const chosen = inTurn ? firstIntoTurn! : next;
+      if (this.deps.releaseCheck?.(chosen.id, session, paneId) === false) {
+        this.endHeldInTick(chosen, "refused", "pane_gone");
         continue;
       }
-      started.push(this.releaseQuietly(next.id));
+      if (inTurn) this.inTurnReleases.set(chosen.id, (this.inTurnReleases.get(chosen.id) ?? 0) + 1);
+      started.push(this.releaseQuietly(chosen.id, inTurn));
     }
     return started;
   }
@@ -4250,9 +4341,9 @@ export class SendProtocol {
   }
 
   /** {@link release} for the poll: a throw is a warning in the journal, never an unhandled rejection. */
-  private async releaseQuietly(id: string): Promise<SendAnswer | null> {
+  private async releaseQuietly(id: string, intoTurn = false): Promise<SendAnswer | null> {
     try {
-      return await this.release(id);
+      return await this.release(id, false, intoTurn);
     } catch (err) {
       console.warn(`[send] release of ${id} failed: ${err instanceof Error ? err.message : String(err)}`);
       return null;
@@ -4297,6 +4388,7 @@ export class SendProtocol {
       if (outcome === "refused" && reason === "pane_gone") receipt = { ...receipt, detail: HELD_PANE_GONE };
       this.deps.store.settle(entry.id, receipt);
     }
+    this.inTurnReleases.delete(entry.id);
     if (outcome === "cancelled") holds.remove(entry.id);
     else holds.end(entry.id, outcome, reason);
     if (receipt === null || held === undefined) return null;
@@ -4695,7 +4787,7 @@ export class SendProtocol {
    * One run of the steps. `release` marks the run of a held request (M56 spec 15): a refusal that means
    * "not yet" sends it back to its place in the queue instead of ending it.
    */
-  private async run(request: SendRequest, record: SendRecord, named: SendTarget, release = false, overDraft = false): Promise<SendAnswer> {
+  private async run(request: SendRequest, record: SendRecord, named: SendTarget, release = false, overDraft = false, intoTurn = false): Promise<SendAnswer> {
     let target = named;
     let own = await this.deps.profile(target.harness, target.paneId);
     // A pane where a harness is starting is that harness's pane in waiting: its shell is not the place
@@ -4713,6 +4805,7 @@ export class SendProtocol {
       ...this.bareState(request, record, target, match),
       released: release,
       overDraft,
+      intoTurn,
       starting: own === null ? expected !== null : starting !== null,
       startingNamed: own !== null && starting !== null,
     };
@@ -4817,7 +4910,7 @@ export class SendProtocol {
     if (turn === "running") {
       const end = new Ended("refused", "turn_running");
       if (release) return this.backToQueue(state, end);
-      return this.holdsEnd(state, end) ? this.hold(state, end) : this.settle(state, end);
+      return this.holdsEnd(state, end, true) ? this.hold(state, end) : this.settle(state, end);
     }
     if (draft) return this.dataDraftHold(state, release);
     // A message tried by data before, sent back by its part over a draft, goes under a new command id:
@@ -5016,7 +5109,10 @@ export class SendProtocol {
       console.warn(`[send] ${state.record.id} write_failed on ${state.target.paneId}: ${end.extra.detail}`);
     }
     const receipt = this.receiptOf(state, outcome, outcome === "effective" ? undefined : end.reason, end.extra.cap, end.extra);
-    this.deps.store.settle(state.record.id, receipt);
+    const framed = end.extra.framed ?? (state.marks.s0?.frame ?? null) !== null;
+    // Decide once on the original screen. A replay must not infer actions from a later screen.
+    const offers = outcome === "sent" || outcome === "effective" ? [] : directPhoneSend(state) && end.extra.cap === undefined ? ["keys"] as const : end.extra.offers ?? offersOf(outcome, receipt.reason, framed, end.extra.surface);
+    this.deps.store.settle(state.record.id, receipt, offers);
     this.noteLeftTyped(state, receipt.outcome);
     // A send the harness holds for after the turn: a card until the journal or the box closes it (ADR 0122).
     // A steer is kept too, with no card of its own: a Stop may give it back together with the queue. So is a
@@ -5037,8 +5133,7 @@ export class SendProtocol {
       });
     }
     this.count(state, receipt, end.extra.surface);
-    const framed = end.extra.framed ?? (state.marks.s0?.frame ?? null) !== null;
-    return answerWith({ receipt, offers: end.extra.offers ?? offersOf(outcome, receipt.reason, framed, end.extra.surface) }, end.extra);
+    return answerWith({ receipt, offers }, end.extra);
   }
 
   /**
@@ -5058,10 +5153,22 @@ export class SendProtocol {
         this.leftTyped.delete(key);
         return;
       }
-      this.leftTyped.set(key, { generation: state.generation, text: sendLines(state.request.text).join("\n"), at: this.now() });
+      const scrolledImage = state.wroteIntoEmptyBox === true ? scrolledDraftImage(state.marks.s1) : null;
+      this.leftTyped.set(key, { generation: state.generation, text: sendLines(state.request.text).join("\n"), at: this.now(), scrolledImage });
       return;
     }
     if (outcome !== "refused" && outcome !== "held") this.leftTyped.delete(key);
+  }
+
+  /**
+   * A direct replacement can erase an earlier acknowledged write by its length even if the visible
+   * tail did not prove that send for Enter. The pane must still show the scrolled frame it left.
+   */
+  private ownScrolledLength(state: RunState, snap: Snap): DraftLength | null {
+    const left = this.leftTyped.get(state.lockKey);
+    if (left === undefined || left.scrolledImage === null || left.generation !== state.generation || this.now() - left.at > LEFT_TYPED_MS) return null;
+    if (scrolledDraftImage(snap) !== left.scrolledImage) return null;
+    return { chars: [...left.text].length, exact: true };
   }
 
   /**
@@ -5123,7 +5230,7 @@ export class SendProtocol {
     const { outcome, reason } = last.receipt!;
     const typed = outcome === "typed_not_submitted" || (outcome === "unknown" && reason === "crash" && last.submitSentAt === undefined);
     if (!typed || last.textHash !== this.deps.store.hashText(state.request.text)) return null;
-    return { generation: last.paneGeneration, text: sendLines(state.request.text).join("\n"), at: last.acceptedAt };
+    return { generation: last.paneGeneration, text: sendLines(state.request.text).join("\n"), at: last.acceptedAt, scrolledImage: null };
   }
 
   /**
@@ -5295,6 +5402,9 @@ export class SendProtocol {
       throw new Ended("refused", "probe_failed", { surface: s0.surface, framed: false, detail: notStartedDetail(match) });
     }
     this.atS0(state, s0);
+    const direct = directPhoneSend(state);
+    // A detected secret field keeps its own send path; ordinary direct messages replace leftovers.
+    const mode = direct ? "replace" : request.mode;
     // The person's override on a screen that is not free (M102 spec 12): refused only for a moved screen
     // or a menu, typed with no key on a reading that would have refused, else on as before.
     await this.overrideAtS0(state, s0, lines);
@@ -5302,7 +5412,7 @@ export class SendProtocol {
     // At most one of Collie's probe characters unaccounted for per pane (2026-10-26): while one an
     // earlier send typed into a starting box has not shown, a request that would type into the box
     // types no probe of its own. Once it shows, the residue rule below takes it out first.
-    if (writes && this.pendingOf(state) > 0 && this.residueOf(state, s0) === 0) {
+    if (!direct && writes && this.pendingOf(state) > 0 && this.residueOf(state, s0) === 0) {
       if (state.released === true) state.startWait = true;
       throw new Ended("refused", "probe_failed", { surface: s0.surface, framed: s0.frame !== null, detail: pendingDetail(match, probeCharOf(match)) });
     }
@@ -5319,7 +5429,7 @@ export class SendProtocol {
     const residue = this.residueOf(state, s0) > 0;
     // A draft read is a reading until a probe proves it (the header, 2026-10-25). A stale frame gets one
     // more S0 read, and the run goes on from it or ends refused.
-    if (residue || this.draftToProve(state, s0, holds)) {
+    if ((!direct || mayHoldPlaceholder(match, s0)) && (residue || this.draftToProve(state, s0, holds))) {
       const started = this.now();
       const probeWrites = state.probeWriteMs;
       if (!residue && state.request.draftHolds === true && s0.frame !== null) state.placeholderProbe = boxText(s0.frame);
@@ -5349,7 +5459,7 @@ export class SendProtocol {
       }
     }
     const markers = this.residueOf(state, s0);
-    if (markers > 0) {
+    if (!direct && markers > 0) {
       s0 = await this.removeResidue(state, markers);
       state.marks.s0 = s0;
       this.atS0(state, s0);
@@ -5357,7 +5467,8 @@ export class SendProtocol {
       if (request.mode === "discard") return;
     }
 
-    switch (request.mode) {
+    let ownDraftLength: DraftLength | null = null;
+    switch (mode) {
       case "submit": {
         // A returned card's Send goes only on an idle turn: a busy one means the text may be on its way.
         if (request.returnedCard === true && s0.surface.turn !== "idle") throw new Ended("refused", "not_free", { surface: s0.surface, detail: RETURNED_BUSY });
@@ -5370,15 +5481,16 @@ export class SendProtocol {
         this.lap(state, "s0");
         // The length of the text Collie typed sizes the clear of a box that hides its head; a box that
         // held another text has no length Collie knows.
-        if (located === null) await this.clear(state, s0, state.heldOther ? null : [...lines.join("\n")].length);
+        if (located === null) await this.clear(state, s0, state.heldOther ? null : { chars: [...lines.join("\n")].length });
         else await this.clearBare(state, located);
         this.lap(state, "clear");
         return;
       }
       case "replace": {
         const frame = this.draftFrame(state, s0);
+        if (direct && frame.scrolled === true) ownDraftLength = this.ownScrolledLength(state, s0);
         // A draft the clear would refuse is refused here, before the probe types anything.
-        if (boxText(frame).length > 0) clearLength(s0, frame, null);
+        if (frame.scrolled === true || boxText(frame).length > 0) clearLength(s0, frame, ownDraftLength);
         // The box would end up holding one of the notice's keys alone, which answers the notice.
         if (this.answersNotice(state, s0)) throw noticeRefusal(s0);
         // S0 ends with its two reads. The box is emptied after the probe, below.
@@ -5400,20 +5512,20 @@ export class SendProtocol {
       case "prepare":
         return;
     }
-    if (request.mode !== "replace") this.lap(state, "s0");
+    if (mode !== "replace") this.lap(state, "s0");
 
     // Replace probes over the draft it is about to empty (Brief 5, 2026-11-20): the draft is the person's,
     // so it goes only once every check that can still refuse before a write has passed. A probe that ran
     // after the clear could fail (a dialog that opens in a running turn) and leave the box empty and the
     // text not typed. So the probe goes after the draft, as Add to it's does, and the clear follows it.
-    const clears = request.mode === "replace" && s0.frame !== null && boxText(s0.frame).length > 0;
+    const clears = mode === "replace" && s0.frame !== null && (ownDraftLength !== null || boxText(s0.frame).length > 0);
     const prefix = request.mode === "append" && s0.frame !== null ? boxText(s0.frame) : "";
     const text = lines.join("");
     // A manual send (the person confirmed a screen that is not free) is always probed, and so is any
     // send into a running turn (a send, Add to it, Replace): a dialog can open at any moment of a turn.
     // A notice's digit is never probed: S0 proved the box empty, and no key but the digit may reach a box under the notice.
     state.probed =
-      !state.noticeKey &&
+      !direct && !state.noticeKey &&
       // After a second S0 read of a stale box the box is proven by the probe again, whatever the profile says.
       // So is a box of a harness that is starting: it may be drawn and still read no keys.
       (state.reread ||
@@ -5444,9 +5556,8 @@ export class SendProtocol {
     // The probe showed in the box and went again: the starting harness reads keys, its window ends.
     if (state.starting && state.probed) this.noteFramed(state);
     if (clears) {
-      // The draft is the person's (or one a refusal left there): Collie knows only what the box shows.
-      // Emptying the box is its own step with its own bound.
-      s0 = await this.clear(state, s0, null);
+      // The clear uses the box's visible text or the length of the earlier acknowledged write.
+      s0 = await this.clear(state, s0, ownDraftLength);
       state.marks.s0 = s0;
       this.lap(state, "clear");
     }
@@ -5457,7 +5568,8 @@ export class SendProtocol {
     }
     // A text that is the placeholder's own words reads as the placeholder once typed: from here the box is read as it shows.
     if (state.ghost !== null && wsFree(lines.join("")) === wsFree(state.ghost.text)) state.ghost = null;
-    await this.write(state, lines, s0);
+    const wrote = await this.write(state, lines, s0);
+    state.wroteIntoEmptyBox = direct && wrote === "written" && s0.frame !== null && s0.frame.scrolled !== true && boxText(s0.frame) === "";
     this.lap(state, "write");
 
     if (state.noticeKey) {
@@ -5590,6 +5702,13 @@ export class SendProtocol {
     this.lap(state, "commit");
   }
 
+  /** Recognise a sign-in field before choosing a read or send policy, even on an older phone. */
+  private noteSecretField(state: RunState, snap: Snap): void {
+    if (snap.frame?.secret === undefined && snap.surface.field !== "secret") return;
+    state.secretField = true;
+    if (state.request.secret !== true) this.deps.store.forgetLine(state.record.id);
+  }
+
   /** What every S0 read is held to before the mode's own rule: a held request's answer box, the manual Send's turn rule, the pane's generation. */
   private atS0(state: RunState, s0: Snap): void {
     // A held request is a message for the agent, in every mode a release runs (a send, a command, a
@@ -5617,10 +5736,7 @@ export class SendProtocol {
     }
     // A sign-in field the phone did not name: the text is a secret all the same, so its record keeps no line.
     // So is a screen that names one (`field: "secret"`) where no layout read the field (fail closed).
-    if (s0.frame?.secret !== undefined || s0.surface.field === "secret") {
-      state.secretField = true;
-      if (state.request.secret !== true) this.deps.store.forgetLine(state.record.id);
-    }
+    this.noteSecretField(state, s0);
     // A sign-in code goes only into the sign-in field the reader knows (2026-11-17, second review): with
     // none on the screen (it closed, or the read is stale) the code would land in the agent's box and reach
     // the model. Refused before any key; its record keeps no line (the accept took none for a secret).
@@ -5629,7 +5745,7 @@ export class SendProtocol {
     if (s0.frame?.newlineSubmits === true && sendLines(state.request.text).length > 1) {
       throw new Ended("refused", "multiline", { surface: s0.surface, detail: NEWLINE_SUBMITS });
     }
-    state.manual = takesManualSend(s0.surface);
+    state.manual = !directPhoneSend(state) && takesManualSend(s0.surface);
     // The person's override meets the manual turn rule in `overrideAtS0`: a turn that would refuse it is
     // typed there with no key (M102 spec 12), a turn that queues it still takes the queue key here.
     if (state.manual && overrideAsked(state.request)) {
@@ -5659,7 +5775,8 @@ export class SendProtocol {
     // except where the draft may be the placeholder (M78 spec 06): one probe decides, and the hold queue
     // asks for it only once the box text held still between two polls (tickHolds).
     if (state.request.draftHolds === true && !mayShowPlaceholder) return false;
-    if (surface.turn !== "idle" || surface.modal !== "none" || surface.composer !== "draft" || boxText(frame).length === 0) return false;
+    const directPlaceholder = directPhoneSend(state) && mayShowPlaceholder;
+    if ((!directPlaceholder && surface.turn !== "idle") || surface.modal !== "none" || surface.composer !== "draft" || boxText(frame).length === 0) return false;
     switch (state.request.mode) {
       case "send":
       case "command":
@@ -6204,7 +6321,9 @@ export class SendProtocol {
    */
   private draftFrame(state: RunState, s0: Snap): Frame {
     const { surface, frame } = s0;
-    if (frame === null || surface.turn === "unknown" || surface.modal !== "none" || (surface.composer !== "draft" && surface.composer !== "empty")) {
+    const direct = directPhoneSend(state);
+    if (direct && s0.otherScreen !== null) throw new Ended("refused", "not_free", { surface, detail: otherScreenDetail(s0.otherScreen) });
+    if (frame === null || (!direct && surface.turn === "unknown") || surface.modal !== "none" || (surface.composer !== "draft" && surface.composer !== "empty")) {
       throw new Ended("refused", "not_free", { surface, detail: "The input box is not free." });
     }
     if (surface.turn === "running") this.gateTurn(state, s0, frame);
@@ -6233,6 +6352,10 @@ export class SendProtocol {
    * dialog). A send S0 already put on the queued path met the rule there and skips this.
    */
   private turnAtS1(state: RunState, s0: Snap, s1: Snap): void {
+    if (directPhoneSend(state)) {
+      if (s1.surface.turn === "running") state.queued = true;
+      return;
+    }
     if (state.queued) return;
     // The box as S0 read it: what goes out is the text plus what the box held then (Add to it).
     const frame = s1.surface.turn === "running" && s1.frame !== null ? s0.frame : null;
@@ -6256,7 +6379,7 @@ export class SendProtocol {
 
   /** Anything that goes into a turn S0 read as running (a send, Add to it, Replace, Submit, Discard) meets {@link turnRefusal}, then is queued. */
   private gateTurn(state: RunState, s0: Snap, frame: Frame): void {
-    const refusal = turnRefusal(state, s0, frame);
+    const refusal = directPhoneSend(state) ? null : turnRefusal(state, s0, frame);
     if (refusal !== null) throw refusal;
     state.queued = true;
   }
@@ -6528,7 +6651,7 @@ export class SendProtocol {
    * window, with no frame) must be identical. Nothing is written before S0 passes, so a slow S0 is a
    * refusal (`bound`), never an unknown.
    */
-  private async stableRead(state: RunState, step: string): Promise<Snap> {
+  private async stableRead(state: RunState, step: string, directOnce = false): Promise<Snap> {
     const until = Math.min(this.now() + BOUNDS.s0.ms, state.deadline);
     const late = (): Ended => new Ended("refused", "bound", { detail: `The screen did not read twice inside ${String(BOUNDS.s0.ms)} ms.` });
     const readInBound = async (): Promise<Snap | null> => {
@@ -6555,6 +6678,10 @@ export class SendProtocol {
     };
     const first = await wholeInBound();
     if (first === null) throw this.noRead(state);
+    if (directOnce) {
+      this.noteSecretField(state, first);
+      if (directPhoneSend(state)) return first;
+    }
     if (this.now() + S0_GAP_MS > until) throw late();
     await this.sleep(S0_GAP_MS);
     const second = await wholeInBound();
@@ -6572,16 +6699,19 @@ export class SendProtocol {
       const win = bottomWindow(snap.plain);
       return snap.plain.slice(win.first, win.end).join("\n");
     };
-    if ((first.frame === null) !== (second.frame === null) || key(first) !== key(second)) {
+    // A sign-in field must also stay in the same position. Matching border text alone is not enough.
+    const secretMoved = isSecretSend(state) && (gridSizeOf(first) !== gridSizeOf(second) || first.frame?.top !== second.frame?.top || first.frame?.bottom !== second.frame?.bottom);
+    if (secretMoved || (first.frame === null) !== (second.frame === null) || key(first) !== key(second)) {
       const moved = new Ended("refused", "not_free", { surface: second.surface, detail: "The input box moved between two reads." });
-      if (inFlux(first, second)) moved.extra.inFlux = true;
+      if (!isSecretSend(state) && inFlux(first, second)) moved.extra.inFlux = true;
       throw moved;
     }
     return second;
   }
 
   /**
-   * S0 with one more read when the screen's geometry is in flux (2026-10-26, omp gang three 02-desync):
+   * Ordinary direct sends read once; sign-in fields still need two stable reads. Other sends retry S0
+   * once when the geometry is in flux (2026-10-26):
    * the two reads differ in grid size (a resize landed between them), or the read is torn (cut inside the
    * box). Such a read is a frame on its way, not a box that is not free, so it is no reason yet to hold
    * the send or refuse it `not_free`. After {@link SETTLE_MS} S0 reads again, once, and that read is
@@ -6590,7 +6720,7 @@ export class SendProtocol {
    */
   private async settledS0(state: RunState): Promise<Snap> {
     try {
-      const s0 = await this.stableRead(state, "s0");
+      const s0 = await this.stableRead(state, "s0", true);
       if (s0.surface.reason !== "torn" || state.keys.length > 0) return s0;
     } catch (err) {
       if (!(err instanceof Ended) || err.extra.inFlux !== true || state.keys.length > 0) throw err;
@@ -6599,7 +6729,7 @@ export class SendProtocol {
     this.guard(state);
     await this.sleep(SETTLE_MS);
     this.lap(state, "settle");
-    return this.stableRead(state, "s0");
+    return this.stableRead(state, "s0", true);
   }
 
   /**
@@ -6997,12 +7127,26 @@ export class SendProtocol {
     // A message into a framed box on a harness that takes one in a turn: only the box and what is under
     // it decide (2026-10-17 decision). Where Enter would steer or interrupt a turn and no queue key
     // exists, rows above that moved may be a turn Collie did not see, so the full compare stays.
-    const boxOnly = s0.frame !== null && !command && !manual && queuesInTurn(state.match);
+    const direct = directPhoneSend(state);
+    const boxOnly = s0.frame !== null && !command && !manual && (direct || queuesInTurn(state.match));
     const judge = (snap: Snap): Verdict => {
       if (belowMovedAlone(earlier, snap)) state.belowMoved = true;
       earlier = snap;
       if (boxOnly) {
-        const verdict = typedBoxVerdict(s0, snap, prefix, lines, collapse, state.whole);
+        const read = typedBoxVerdict(s0, snap, prefix, lines, collapse, state.whole);
+        // A person's direct message submits through redraw and compare differences. A modal,
+        // another screen or a missing box still stops it. A scrolled box must still match the
+        // visible tail. A Codex direct send uses the profile's footer comparison before Tab.
+        // Only once the paste has landed: a box that still reads as at S0 has not taken the text yet,
+        // and a submit key then is swallowed while Codex is still taking the paste (2026-11-14).
+        const landed = snap.frame !== null && s0.frame !== null && wsFree(boxText(snap.frame)).length > 0 &&
+          wsFree(boxText(snap.frame)) !== wsFree(boxText(s0.frame));
+        const profileId = state.match?.profile.id;
+        const safeDirect = read !== "modal_cue" && read !== "other_screen" &&
+          (snap.frame?.scrolled !== true || read !== "mismatch") &&
+          (!directSendNeedsStableFooter(profileId) || belowKept(s0, snap));
+        const acceptPasteMismatch = read === "mismatch" && retrySubmitProfile(profileId);
+        const verdict = landed && (direct ? safeDirect : acceptPasteMismatch) ? "pass" : read;
         if (verdict === "other_screen") {
           // Not the conversation's box: it does not come back by itself, and Enter there starts a new session.
           why = "changed";
@@ -7216,6 +7360,7 @@ export class SendProtocol {
    * `command` also passes when the box went away or no longer holds the text: a command may open its
    * own screen (a picker, a panel) in the box's place. So does a send into a box that answers the
    * agent's question (`idle.frame.answers`) once two reads in a row show no box: it closes on its answer.
+   * A direct send on a retry-submit profile gets one more key only while its safe box holds the text.
    */
   private async awaitSent(state: RunState, s0: Snap, landing: Landing | null, lines: readonly string[]): Promise<void> {
     const { command, manual } = state;
@@ -7298,6 +7443,19 @@ export class SendProtocol {
       return manual && emptyBoxBack(s0.plain, snap.plain, landing, lines.join("")) ? "pass" : "wait";
     };
     let result = await this.poll(state, "s2", BOUNDS.s2, test);
+    const beforeRetry = result.snap;
+    const retry = directPhoneSend(state) && retrySubmitProfile(state.match?.profile.id);
+    if (retry && result.verdict !== "pass" && beforeRetry !== null && beforeRetry.frame !== null &&
+        !modalAtBox(beforeRetry) && !framedCueGrew(state.marks.s1 ?? s0, beforeRetry) && beforeRetry.otherScreen === null &&
+        belowKept(s0, beforeRetry) &&
+        wsFree(sentText).length > 0 && wsFree(boxText(beforeRetry.frame)) === wsFree(sentText) &&
+        !witnessed && (queued || !runningSign(beforeRetry.rows, beforeRetry.frame, state.match?.profile.idle.runningRows))) {
+      // Codex 0.169 may swallow the first Tab. The text is still in the same safe box, and
+      // no new turn started. Refresh the gate revision and press the same submit key once.
+      this.stretch(state, BOUNDS.s2.ms);
+      await this.commit(state, beforeRetry);
+      result = await this.poll(state, "s2", BOUNDS.s2, test);
+    }
     // A command's own screen (a picker, a panel) may be slow to draw: a machine under load took more
     // than S2's whole bound to open one, and the box stood unchanged until it did. That screen is the
     // evidence, so a command that found nothing gets one more S2 bound with the same test (still cut
@@ -7476,8 +7634,8 @@ export class SendProtocol {
    *  - a box that shows its whole draft takes what it shows plus the key's slack, counted again on
    *    every read, as before;
    *  - a box at its scroll height ({@link Frame.scrolled}) hides the head of its draft. It takes the
-   *    length of the text Collie typed there (`known`, a Discard of its own send) plus the slack. With
-   *    no such length (a Replace of the person's draft, a Discard of a box that held another text) it
+   *    length of the text Collie typed there (`known`). Discard adds the usual slack. A direct Replace
+   *    of a write it acknowledged uses exactly that length. With no such length it
    *    is refused `draft_present` before any key: a clear that stopped half way would leave half a draft;
    *  - a draft longer than {@link CLEAR_MAX_CHARS} is refused the same way.
    * The bound is one read per batch plus {@link CLEAR_SPARE_READS}, never under the S2 bound it borrowed
@@ -7485,18 +7643,19 @@ export class SendProtocol {
    * goes only after a read showed the box changed since the last one, so a late redraw costs a read,
    * never a second batch. A box that went away, a cue, or the bound end it `unknown(no_evidence)`.
    */
-  private async clear(state: RunState, from: Snap, known: number | null): Promise<Snap> {
+  private async clear(state: RunState, from: Snap, known: DraftLength | null): Promise<Snap> {
     const clearKey = state.match?.profile.keys.clear ?? GENERIC_CLEAR;
     const gone = (): Ended => new Ended("unknown", "no_evidence", { detail: "The box went away while it was being emptied." });
     const late = (): Ended => new Ended("unknown", "no_evidence", { detail: "The box did not empty inside the bound." });
     if (from.frame === null || from.cueStrength !== "none") throw gone();
-    const shown = [...boxText(from.frame)].length;
-    if (shown === 0) return from;
+    const exact = known?.exact === true;
+    if (!exact && boxText(from.frame).length === 0) return from;
     const length = clearLength(from, from.frame, known);
-    let budget = length + clearKey.slack;
+    const slack = exact ? 0 : clearKey.slack;
+    let budget = length + slack;
     // The profile's one stroke key (`keys.clearAll`) is pressed at most once, after reads showed the box
     // unchanged since the last batch, never on a box that reads empty.
-    const clearAll = state.match?.profile.keys.clearAll;
+    const clearAll = exact ? undefined : state.match?.profile.keys.clearAll;
     let allPressed = false;
     let unchanged = 0;
     const reads = Math.max(CLEAR_BOUND.reads, Math.ceil(budget / CLEAR_BATCH) + CLEAR_SPARE_READS) + (clearAll === undefined ? 0 : CLEAR_ALL_READS);
@@ -7527,7 +7686,7 @@ export class SendProtocol {
         text = boxText(snap.frame);
       }
       const left = [...text].length;
-      if (left === 0) return snap;
+      if (left === 0 && (!exact || snap.frame.scrolled !== true)) return snap;
       unchanged = text === pressedAt ? unchanged + 1 : 0;
       if (clearAll !== undefined && !allPressed && unchanged >= CLEAR_ALL_AFTER) {
         // `left` is above 0 here: this very read showed a draft the Backspace batches did not move.
@@ -7537,7 +7696,7 @@ export class SendProtocol {
       } else if (text !== pressedAt) {
         // A box that shows its whole draft is pressed for what it shows; one at its scroll height for
         // what is left of the length counted before the first key.
-        const want = snap.frame.scrolled === true ? budget : Math.min(budget, left + clearKey.slack);
+        const want = snap.frame.scrolled === true ? budget : Math.min(budget, left + slack);
         if (want <= 0 && (clearAll === undefined || allPressed)) break;
         if (want <= 0) {
           // Backspace has no key left (its length plus slack went out) and the box still shows text: the
@@ -7561,7 +7720,7 @@ export class SendProtocol {
       if (next === null) throw new Ended("unknown", "no_evidence", { detail: "The pane could not be read while it was being emptied." });
       snap = next;
     }
-    if (snap.frame !== null && boxText(snap.frame).length === 0) return snap;
+    if (snap.frame !== null && (!exact || snap.frame.scrolled !== true) && boxText(snap.frame).length === 0) return snap;
     throw late();
   }
 
@@ -7585,11 +7744,11 @@ export class SendProtocol {
  * a box at its scroll height with no length Collie knows (TALL_DRAFT), or a draft past
  * {@link CLEAR_MAX_CHARS} (LONG_DRAFT). A Replace asks it at S0 too, before its probe.
  */
-function clearLength(from: Snap, frame: Frame, known: number | null): number {
+function clearLength(from: Snap, frame: Frame, known: DraftLength | null): number {
   const shown = [...boxText(frame)].length;
   const scrolled = frame.scrolled === true;
   if (scrolled && known === null) throw new Ended("refused", "draft_present", sawNote(from, { framed: true, offers: ["keys"], detail: TALL_DRAFT }));
-  const length = scrolled && known !== null ? Math.max(known, shown) : shown;
+  const length = known?.exact === true ? known.chars : scrolled && known !== null ? Math.max(known.chars, shown) : shown;
   if (length > CLEAR_MAX_CHARS) throw new Ended("refused", "draft_present", sawNote(from, { framed: true, offers: ["keys"], detail: LONG_DRAFT }));
   return length;
 }

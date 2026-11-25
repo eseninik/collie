@@ -171,7 +171,7 @@ export const zh: Dictionary = {
     "“自动”会在宽度至少为 600 px 且高度至少为 480 px 的屏幕上显示侧边栏和窗格列。“关闭”则在所有位置保持手机布局。",
   "settings.enterSends.title": "回车发送",
   "settings.enterSends.hint":
-    "使用实体键盘时，回车键发送消息，Shift+回车键换行。使用屏幕键盘时，回车键始终换行。",
+    "使用实体键盘时，回车键发送消息，Shift+回车键换行。即使关闭此设置，也可以在任一键盘上按回车键向 Claude 和 Codex 发送普通消息。",
   "settings.projectPictures.title": "项目图片",
   "settings.projectPictures.hint":
     "用仓库 collie.toml 中指定的图片代替代理的徽标，徽标显示在角上，并用作推送通知的图标。",
@@ -626,6 +626,7 @@ export const zh: Dictionary = {
   "composer.protocol.overrideMoved": "你的文字输入前屏幕已变化，所以没有输入任何内容。请现在查看屏幕，然后点按“发送”，再点按“仍然发送”。",
   "composer.protocol.overrideTyped": "你的文字已在代理的输入框中。Collie 没有按 Enter。请检查屏幕，然后在按键面板上按 Enter。",
   "composer.protocol.draftUnseen": "输入框里有一份 Collie 无法完整读取的草稿，所以没有输入任何内容。“清空输入框”按钮会删除这份草稿。之后请再次发送。",
+  "composer.protocol.tallDraft": "草稿超出了输入框的高度，Collie 无法判断草稿的长度。没有删除任何内容。请用键盘清空输入框，然后重新发送。",
   "composer.step.sendAgain": "再次发送",
   "composer.step.stop": "停止本轮",
   "composer.step.emptyBox": "清空输入框",
@@ -1652,6 +1653,7 @@ export const zh: Dictionary = {
   "connection.stale.messageTemplate": "{reason}。{detail}",
   "connection.session.title": "工作区",
   "connection.session.aria": "工作区：{name}。切换工作区",
+  "connection.session.moveAria": "移动 {name}",
   "connection.session.primary": "主会话",
   "connection.session.unreachable": "不可达",
   "connection.session.ariaIn": "当前工作区：{name}",

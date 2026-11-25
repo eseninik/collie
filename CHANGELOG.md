@@ -23,6 +23,68 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **Codex has a short launcher with the owner's existing defaults.** Run `scripts/codex1` to retain the configured model, reasoning effort, ordinary tier and disabled fast modes while forwarding additional arguments.
+
+### Fixed
+
+- **Codex conversations stay readable with a wrapped status line.** Recognise Codex 0.169 screens on the phone, retain both status rows, and keep real dialogs blocking sends.
+
+- **Codex Chat shows images, command results and file changes.** Read recorded image bytes, process exits and patch diffs into the same cards as Claude, including straight-line Codex 0.169 Code Mode batches.
+
+- **Codex keeps failed tool runs visible when output is empty.** Keep the wrapper's recorded completion code on its original card without assigning it to a nested command.
+
+- **Codex replies send when a wrapped status repeats its separator.** Read the contiguous status rows as one input-frame edge, so a path continuation ending in another field does not hide the composer or block the Send button.
+
+- **Owner phone workflows keep working beside the new agent features.** Keep direct Claude and Codex sends and hide their recovery cards, retain history without the automatic prompt banner, and preserve the data road's queue and explicit manual-send checks.
+
+- **A full direct-send queue offers an action the phone supports.** Claude phone sends above the pane limit ask you to wait for the turn to end, without referring to hidden held-message cards.
+
+- **Retrying a send keeps the actions its first answer offered.** Store the settled actions beside the receipt, so a sign-in send replays the same answer after a restart without reinterpreting the field as an ordinary direct send.
+
+- **A phone sign-in send waits for a stable input field.** Recognise the secret field on the first S0 read before choosing the direct-send shortcut, and require two stable reads before any text or key.
+
+- **Queued Claude and Codex messages stay visible in Chat.** Keep the pending stream line while queue cards are hidden, until the conversation includes the sent text.
+
+- **Direct queued messages outlive the hidden-card handover timeout.** Claude and Codex keep their pending Chat line for its ordinary lifetime and replace it with the matching journal turn; other harnesses keep the upstream handover timeout.
+
+- **Claude 2.1.327 effort dialogs show their controls on the phone.** Read the slider above its empty input frame, keep the separate Ultracode toggle out of the scale, and expose the printed arrow, session-only, Save and Cancel actions while composer typing stays blocked.
+
+- **An effort card disappears when output follows its empty box.** Require Claude's mode row at the end of the retained input chrome, so ordinary output cannot keep an old dialog interactive.
+
+- **Effort dialogs keep the keyboard while their empty box remains.** Verify the captured frame beneath the modal without making the composer available, and perturb the dialog's bound region when checking freshness.
+
+- **Effort dialogs show each status row only once.** Strip the passive input chrome from the menu's mirror before resurfacing its status rows in the strip.
+
+- **The design reference shows resend questions on a supported agent.** Run its send-question examples on Grok, which keeps upstream confirmation cards, while Claude and Codex retain direct phone sends.
+
+- **Ordinary Claude screens skip the effort dialog frame walk.** Require the printed arrow token before parsing input chrome, keeping the existing dialog checks while avoiding repeated work during composer pre-flight.
+
+- **A clock cannot make an open Usage panel accept messages.** Keep a panel's cancel hint visible to the modal guard when a right-aligned clock shares its row or a blank row beside it, without changing direct phone sends or the cue window.
+
+- **Clock checks keep their work bounded on padded terminal rows.** Skip rows without a clock separator, match two separating spaces and leave remaining padding blank, avoiding repeated whitespace scans while preserving the same panel footer decision.
+
+- **Enter on a physical keyboard keeps sending after updating.** The local build turns on Enter sends by default and honors each device's saved choice. Holding Ctrl+Enter or Cmd+Enter cannot confirm a message that needs a second press.
+
+- **The phone's Enter sends ordinary Claude and Codex messages.** Either keyboard sends these messages with Enter, even with Enter sends off. Shift+Enter adds a new line.
+
+- **Direct replies keep the Enter behavior of 1.29.0.** Enter sends once the input method has finished composing, and Alt+Enter sends too. Codex keeps a phone reply in its input box when the number of rows below the box changes, excluding known hints.
+
+- **Enter and paste keep working in the reply box.** The reply box keeps its send, newline and paste keys even when a desktop shortcut is assigned to the same key.
+
+- **Paste works in the reply box on non-Latin layouts.** A shortcut on the physical V key still works away from the reply box.
+
+- **Enter follows the active keyboard mode from the reply box.** It opens the highlighted row in Navigate mode and exits Resize mode. The draft stays in the box. Shift+Insert pastes in the box and can be bound to a shortcut elsewhere.
+
+- **Enter with a modifier also follows the active keyboard mode.** Enter with Ctrl, Cmd, Shift or Alt opens the highlighted row in Navigate mode or exits Resize mode. Your draft stays in the reply box.
+
+- **Pinned panes lead the sidebar when it is collapsed.** They appear in the same order as in the open sidebar, so you can open them from either view.
+
+- **Direct replies handle narrow Claude panes and Codex goal notices.** Claude sends a long reply once the visible end matches and leaves an already scrolled draft alone when its full text cannot be read. Codex accepts a disappearing shortcut hint and pauses when a new row appears below the reply box before Tab or a retry.
+
+- **A new phone reply replaces Collie's own scrolled Claude draft.** If a draft from the terminal is too tall for Collie to read in full, the phone explains why the send stopped and offers to open Keys.
+
 ## [1.30.1] - 2026-11-25
 
 ### Changed

@@ -1,13 +1,18 @@
 import { useEffect } from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { Composer } from "@/components/composer";
 import { __resetHardwareKeyboard, hasSeenHardwareKeyboard } from "@/lib/hardware-keyboard";
+import { markLive } from "@/lib/liveness";
 import { __resetOperatorCommands, getOperatorShortcuts } from "@/lib/operator-config";
 import { __resetShortcutRegistry, registerPaneKeySink, registerShortcutHandler } from "@/lib/shortcuts/registry";
 import { __resetShortcutState, getShortcutKeymap, useShortcutMode } from "@/lib/shortcuts/state";
+import { shortcutTarget } from "@/lib/shortcuts/target";
+import { recordedSends } from "@/test/handlers";
 import { server } from "@/test/setup";
 
 import { useShortcuts, useShortcutKeyboard } from "./use-shortcuts";
@@ -26,7 +31,12 @@ function ModeText() {
   return <output data-testid="mode">{useShortcutMode()}</output>;
 }
 
-function Page({ routeKey = "/", onReplyKey, onSheetKey }: { routeKey?: string; onReplyKey?: (key: string) => void; onSheetKey?: (key: string) => void }) {
+function Page({ routeKey = "/", onReplyKey, onReplyPaste, onSheetKey }: {
+  routeKey?: string;
+  onReplyKey?: (key: string) => void;
+  onReplyPaste?: (text: string) => void;
+  onSheetKey?: (key: string) => void;
+}) {
   useShortcutKeyboard(routeKey);
   // A sheet closes on Escape from a listener of its own, as BottomSheet does.
   useEffect(() => {
@@ -37,7 +47,12 @@ function Page({ routeKey = "/", onReplyKey, onSheetKey }: { routeKey?: string; o
   return (
     <div>
       <ModeText />
-      <textarea aria-label="Reply" onKeyDown={(event) => onReplyKey?.(`${event.ctrlKey || event.metaKey ? "mod+" : ""}${event.key}`)} />
+      <textarea
+        aria-label="Reply"
+        {...shortcutTarget("focus_composer")}
+        onKeyDown={(event) => onReplyKey?.(`${event.ctrlKey || event.metaKey ? "mod+" : ""}${event.key}`)}
+        onPaste={(event) => onReplyPaste?.(event.clipboardData.getData("text/plain"))}
+      />
       <div role="dialog" aria-label="Sheet" />
     </div>
   );
@@ -155,6 +170,208 @@ describe("the hardware keyboard seen", () => {
     expect(tap(document.body, { key: "x", code: "KeyX" })).toBe(true);
     expect(hasSeenHardwareKeyboard()).toBe(true);
   });
+});
+
+// Source: the Collie 1.30.0 port brief, desktop shortcuts and the reply box.
+describe("composer priority @oracle:requirement @req:COMPOSER-SHORTCUT-KEYS", () => {
+  it.each([
+    { binding: "ctrl+enter", chord: "ctrl+enter", event: { key: "Enter", code: "Enter", ctrlKey: true } },
+    { binding: "cmd+enter", chord: "meta+enter", event: { key: "Enter", code: "Enter", metaKey: true } },
+    { binding: "ctrl+v", chord: "ctrl+v", event: { key: "v", code: "KeyV", ctrlKey: true } },
+    { binding: "cmd+v", chord: "meta+v", event: { key: "v", code: "KeyV", metaKey: true } },
+  ])("keeps $binding in the composer even if it is a shortcut elsewhere", async ({ binding, chord, event }) => {
+    const toggle = vi.fn();
+    const onReplyKey = vi.fn();
+    registerShortcutHandler("toggle_sidebar", toggle);
+    await renderPage({ onReplyKey }, { toggle_sidebar: [binding] });
+    await waitFor(() => expect(getShortcutKeymap()?.direct.get(chord)?.action).toBe("toggle_sidebar"));
+    expect(tap(document.body, event)).toBe(false);
+    expect(toggle).toHaveBeenCalledTimes(1);
+
+    const reply = screen.getByRole("textbox", { name: "Reply" });
+    reply.focus();
+    expect(tap(reply, event)).toBe(true);
+    expect(onReplyKey).toHaveBeenCalledExactlyOnceWith(`mod+${event.key}`);
+    expect(toggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes Ctrl+V from a Cyrillic keyboard layout @req:COMPOSER-SHORTCUT-PASTE-LAYOUT", async () => {
+    const toggle = vi.fn();
+    const onReplyKey = vi.fn();
+    const paste = { key: "м", code: "KeyV", ctrlKey: true };
+    registerShortcutHandler("toggle_sidebar", toggle);
+    await renderPage({ onReplyKey }, { toggle_sidebar: ["ctrl+v"] });
+    await waitFor(() => expect(getShortcutKeymap()?.direct.get("ctrl+v")?.action).toBe("toggle_sidebar"));
+    expect(tap(document.body, paste)).toBe(false);
+    expect(toggle).toHaveBeenCalledTimes(1);
+
+    const reply = screen.getByRole("textbox", { name: "Reply" });
+    reply.focus();
+    expect(tap(reply, paste)).toBe(true);
+    expect(onReplyKey).toHaveBeenCalledExactlyOnceWith("mod+м");
+    expect(toggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes Shift+Enter even when the prefix waits for an action", async () => {
+    const toggle = vi.fn();
+    const onReplyKey = vi.fn();
+    registerShortcutHandler("toggle_sidebar", toggle);
+    await renderPage({ onReplyKey }, { toggle_sidebar: ["prefix+shift+enter"] });
+    await waitFor(() => expect(getShortcutKeymap()?.prefixed.get("shift+enter")?.action).toBe("toggle_sidebar"));
+
+    const reply = screen.getByRole("textbox", { name: "Reply" });
+    reply.focus();
+    expect(tap(reply, CTRL_B)).toBe(false);
+    expect(mode()).toBe("prefix");
+    expect(tap(reply, { key: "Enter", code: "Enter", shiftKey: true })).toBe(true);
+    expect(onReplyKey).toHaveBeenCalledExactlyOnceWith("Enter");
+    expect(toggle).not.toHaveBeenCalled();
+  });
+
+  it("passes Enter to the composer while only the prefix waits", async () => {
+    const toggle = vi.fn();
+    const onReplyKey = vi.fn();
+    registerShortcutHandler("toggle_sidebar", toggle);
+    await renderPage({ onReplyKey }, { toggle_sidebar: ["prefix+enter"] });
+    await waitFor(() => expect(getShortcutKeymap()?.prefixed.get("enter")?.action).toBe("toggle_sidebar"));
+
+    const reply = screen.getByRole("textbox", { name: "Reply" });
+    reply.focus();
+    expect(tap(reply, CTRL_B)).toBe(false);
+    expect(mode()).toBe("prefix");
+    expect(tap(reply, { key: "Enter", code: "Enter" })).toBe(true);
+    expect(onReplyKey).toHaveBeenCalledExactlyOnceWith("Enter");
+    expect(toggle).not.toHaveBeenCalled();
+  });
+
+  it("passes Shift+Insert to the composer while the prefix waits @req:PORT-1300-SHIFT-INSERT", async () => {
+    const toggle = vi.fn();
+    const onReplyKey = vi.fn();
+    const paste = { key: "Insert", code: "Insert", shiftKey: true };
+    registerShortcutHandler("toggle_sidebar", toggle);
+    await renderPage({ onReplyKey }, { toggle_sidebar: ["prefix+shift+insert"] });
+
+    const reply = screen.getByRole("textbox", { name: "Reply" });
+    reply.focus();
+    expect(tap(reply, CTRL_B)).toBe(false);
+    expect(mode()).toBe("prefix");
+    expect(tap(reply, paste)).toBe(true);
+    expect(onReplyKey).toHaveBeenCalledExactlyOnceWith("Insert");
+    expect(toggle).not.toHaveBeenCalled();
+
+    await waitFor(() => expect(getShortcutKeymap()?.prefixed.get("shift+insert")?.action).toBe("toggle_sidebar"));
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+    });
+    expect(tap(document.body, CTRL_B)).toBe(false);
+    expect(tap(document.body, paste)).toBe(false);
+    expect(toggle).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Enter in a sticky mode @oracle:requirement @req:PORT-1300-STICKY-ENTER", () => {
+  const draft = "a draft that stays in the reply box";
+  const enter = { key: "Enter", code: "Enter" };
+  const modifiedEnter = " @req:PORT-1300-STICKY-MODIFIED-ENTER";
+  const presses = [
+    { name: "Enter", event: enter, requirement: "" },
+    { name: "Ctrl+Enter", event: { ...enter, ctrlKey: true }, requirement: modifiedEnter },
+    { name: "Cmd+Enter", event: { ...enter, metaKey: true }, requirement: modifiedEnter },
+    { name: "Shift+Enter", event: { ...enter, shiftKey: true }, requirement: modifiedEnter },
+    { name: "Alt+Enter", event: { ...enter, altKey: true }, requirement: modifiedEnter },
+    { name: "Enter with keyCode 229 after composition", event: { ...enter, keyCode: 229, isComposing: false }, requirement: modifiedEnter },
+  ];
+
+  beforeAll(() => {
+    if (!Element.prototype.scrollTo) Element.prototype.scrollTo = () => {};
+  });
+
+  function ReplyPage() {
+    useShortcutKeyboard("/");
+    return <>
+      <ModeText />
+      <Composer
+        paneId="w1:sticky"
+        agent="claude"
+        isShell={false}
+        gone={false}
+        readOnly={false}
+        surface={{ revision: 1, turn: "idle", modal: "none", composer: "empty" }}
+        text="pane output"
+        terminalDraft={null}
+        rawTerminalDraft={null}
+        prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false }}
+        display={{ open: false, onToggle: vi.fn() }}
+        onSent={vi.fn()}
+      />
+    </>;
+  }
+
+  async function replyWithDraft() {
+    serveShortcuts(null);
+    markLive("w1:sticky");
+    const router = createMemoryRouter([{ path: "/", element: <ReplyPage /> }]);
+    render(<RouterProvider router={router} />);
+    const reply = screen.getByRole("textbox");
+    await userEvent.setup().type(reply, draft);
+    expect(reply).toHaveFocus();
+    expect(reply).toHaveValue(draft);
+    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+    return reply;
+  }
+
+  for (const { name, event, requirement } of presses) {
+    it(`opens the Navigate row on ${name} without sending the reply${requirement}`, async () => {
+      const down = vi.fn();
+      const open = vi.fn();
+      registerShortcutHandler("navigate_down", down);
+      registerShortcutHandler("navigate_open", open);
+      const reply = await replyWithDraft();
+      expect(tap(reply, CTRL_B)).toBe(false);
+      expect(tap(reply, { key: "w", code: "KeyW" })).toBe(false);
+      expect(mode()).toBe("navigate");
+      expect(tap(reply, { key: "j", code: "KeyJ" })).toBe(false);
+      expect(down).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        expect(tap(reply, event)).toBe(false);
+      });
+      expect(open).toHaveBeenCalledTimes(1);
+      expect(mode()).toBe("normal");
+      expect(recordedSends()).toHaveLength(0);
+      expect(reply).toHaveValue(draft);
+    });
+
+    it(`exits Resize on ${name} without sending the reply${requirement}`, async () => {
+      registerShortcutHandler("resize_wider", vi.fn());
+      const reply = await replyWithDraft();
+      expect(tap(reply, CTRL_B)).toBe(false);
+      expect(tap(reply, { key: "r", code: "KeyR" })).toBe(false);
+      expect(mode()).toBe("resize");
+
+      await act(async () => {
+        expect(tap(reply, event)).toBe(false);
+      });
+      expect(mode()).toBe("normal");
+      expect(recordedSends()).toHaveLength(0);
+      expect(reply).toHaveValue(draft);
+    });
+  }
+});
+
+it("passes the clipboard event while the prefix waits @oracle:requirement @req:COMPOSER-SHORTCUT-PASTE", async () => {
+  const onReplyPaste = vi.fn();
+  await renderPage({ onReplyPaste });
+  const reply = screen.getByRole("textbox", { name: "Reply" });
+  reply.focus();
+  tap(reply, CTRL_B);
+  expect(mode()).toBe("prefix");
+
+  const clipboardData = {
+    getData: (format: string) => format === "text/plain" ? "pasted reply" : "",
+  };
+  expect(fireEvent.paste(reply, { clipboardData })).toBe(true);
+  expect(onReplyPaste).toHaveBeenCalledExactlyOnceWith("pasted reply");
 });
 
 describe("keys that are not the keymap's", () => {

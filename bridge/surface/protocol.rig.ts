@@ -54,6 +54,9 @@ function framelessProfile(): Profile {
 }
 export const DIALOG = [" Do you want to proceed?", " ❯ 1. Yes", "   2. No", " Esc to cancel · Enter to select"];
 
+/** A piece of a paste that has the shape of an image file by an absolute path, whether or not the file exists. */
+const IMAGE_NAME = /^(?:\/|[A-Za-z]:\\).*\.(?:png|jpe?g|gif|webp)$/iu;
+
 type Mode = "claude" | "generic" | "codex" | "muse";
 
 /** A pane that reacts to text and keys like a harness's input box, with knobs for every failure. */
@@ -283,12 +286,13 @@ export class FakePane {
     void paneId;
     this.calls.push(`block:${text}`);
     if (this.now !== null) this.lastWriteAt = this.now();
-    // Claude cuts the paste at each newline and at a space before an absolute path, and attaches the
-    // pieces that are image files (lab, 2.1.305); the kept pieces stay, joined by newlines.
-    const pieces = text.split(/\n| (?=\/)/u);
-    const kept = this.imagesOnlyAlone && pieces.length > 1 ? pieces : pieces.filter((piece) => !this.imageFiles.includes(piece.trim()));
-    for (let i = kept.length; i < pieces.length; i++) this.box += `[Image #${String(++this.pastes)}]`;
-    if (kept.length < pieces.length) text = kept.join("\n");
+    // Claude cuts the paste at each newline and at a space before an absolute path (live, 2.1.306). With
+    // at least one existing image piece, each becomes a token, and blank pieces and missing or directory
+    // image-shaped pieces drop out of the kept text; with none, the paste stays exactly as sent.
+    const pieces = text.split(/\n| (?=\/|[A-Za-z]:\\)/u);
+    const attached = this.imagesOnlyAlone && pieces.length > 1 ? [] : pieces.filter((piece) => this.imageFiles.includes(piece.trim()));
+    for (const _ of attached) this.box += `[Image #${String(++this.pastes)}]`;
+    if (attached.length > 0) text = pieces.filter((piece) => piece.trim() !== "" && !IMAGE_NAME.test(piece.trim())).join("\n");
     const breaks = text.split("\n").length - 1;
     if (breaks + 1 > this.blockLiteralLines || text.length > this.collapseOver) {
       this.box += breaks > 0 ? `[Pasted text #${String(++this.pastes)} +${String(breaks)} lines]` : `[Pasted text #${String(++this.pastes)}]`;

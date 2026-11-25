@@ -134,9 +134,10 @@ describe("codex", () => {
   });
 
   test("a role and a content block are counted where they appear", () => {
-    const tally = tallyOf(createCodexReducer(), [item({ type: "message", role: "tool", content: [{ type: "input_image", url: "x" }] })]);
+    // `input_image` is read now (codex-tools.ts), so the unknown block is one no Codex writes.
+    const tally = tallyOf(createCodexReducer(), [item({ type: "message", role: "tool", content: [{ type: "input_hologram", url: "x" }] })]);
     expect(names(tally.rows)).toEqual(["role:tool"]);
-    expect(names(tally.parts)).toEqual(["input_image"]);
+    expect(names(tally.parts)).toEqual(["input_hologram"]);
   });
 });
 

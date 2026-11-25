@@ -172,7 +172,7 @@ export const ru: Dictionary = {
     "Авто показывает боковую панель и столбцы панелей на экране шириной не менее 600 px и высотой не менее 480 px. Выкл. сохраняет макет для телефона везде.",
   "settings.enterSends.title": "Enter отправляет",
   "settings.enterSends.hint":
-    "С физической клавиатурой Enter отправляет сообщение, а Shift+Enter добавляет новую строку. С экранной клавиатурой Enter всегда добавляет новую строку.",
+    "На физической клавиатуре Enter отправляет сообщение, а Shift+Enter добавляет строку. Обычные сообщения Claude и Codex отправляются по Enter с любой клавиатуры, даже если настройка выключена.",
   "settings.projectPictures.title": "Картинки проектов",
   "settings.projectPictures.hint":
     "Показывает картинку, которую репозиторий указал в своём collie.toml, вместо логотипа агента, с логотипом в углу и как значок push-уведомлений.",
@@ -598,6 +598,7 @@ export const ru: Dictionary = {
   "composer.protocol.overrideMoved": "Экран изменился до того, как ввелся ваш текст, поэтому ничего не напечатано. Посмотрите на экран, затем нажмите «Отправить», потом «Всё равно отправить».",
   "composer.protocol.overrideTyped": "Ваш текст в поле агента. Collie не нажал Enter. Проверьте экран, затем нажмите Enter на панели клавиш.",
   "composer.protocol.draftUnseen": "В поле ввода есть черновик, который Collie не может прочитать целиком, поэтому ничего не напечатано. Кнопка «Очистить поле» удаляет этот черновик. Затем отправьте снова.",
+  "composer.protocol.tallDraft": "Черновик выше поля ввода. Collie не видит его целиком и не может определить его длину. Черновик сохранён. Очистите поле с помощью клавиатуры и отправьте сообщение снова.",
   "composer.step.sendAgain": "Отправить снова",
   "composer.step.stop": "Остановить ход",
   "composer.step.emptyBox": "Очистить поле",
@@ -1646,6 +1647,7 @@ export const ru: Dictionary = {
   "connection.stale.messageTemplate": "{reason}. {detail}",
   "connection.session.title": "Пространства",
   "connection.session.aria": "Пространство: {name}. Сменить пространство",
+  "connection.session.moveAria": "Переместить {name}",
   "connection.session.primary": "основной",
   "connection.session.unreachable": "недоступен",
   "connection.session.ariaIn": "В пространстве: {name}",

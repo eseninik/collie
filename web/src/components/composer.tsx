@@ -41,6 +41,8 @@ import { offerDraft, opensAsModal, SendOfferModal, type OfferDraft } from "@/com
 import { HeldCard, drawnHeldRows, type HeldAction } from "@/components/composer-held";
 import { offerMode, overridePasses, type SendNote } from "@/lib/send-protocol";
 import { SecretField } from "@/components/secret-field";
+import { findProfile, loadProfiles } from "@/lib/surface/profile";
+import { directSendProfile } from "@/lib/surface/profiles/direct-send";
 import { modeFor, sendText } from "@/lib/reply-action";
 import { viewRefusalKey, type ViewRequestNote } from "@/lib/agent-view/reader";
 import { fieldLocked, sendSlot, unreachable, type SendSlot } from "@/lib/send-slot";
@@ -49,7 +51,7 @@ import type { Surface } from "@/lib/surface/surface";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines, type StyledLine } from "@/lib/blocks";
 import { detectNoEchoPrompt } from "@/lib/no-echo";
-import type { HeldRow, SendMode, SendOffer, SendRequestBody, SendWhen } from "@/lib/surface/send";
+import { TALL_DRAFT, type HeldRow, type SendMode, type SendOffer, type SendRequestBody, type SendWhen } from "@/lib/surface/send";
 import { Notice, NOTICE_ACTION } from "@/components/ui/notice";
 import { ActionRow } from "@/components/action-sheet-rows";
 import { AnchoredMenu } from "@/components/ui/anchored-menu";
@@ -1628,6 +1630,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // draft helpers below stay harness-free: they take the capability, never the grammar. Undefined for
   // any agent without an adapter, which is exactly the "no idea" case those helpers already handle.
   const adapter = adapterFor(agent ?? undefined);
+  const profileId = findProfile(loadProfiles(), agent ?? "")?.id;
+  const directMessages = directSendProfile(profileId);
 
   // Guard against a false stranded-draft: if the detected draft is what we JUST sent, it's our own
   // reply still echoing on the "❯" line before the bridge's Enter, so suppress the preview. Applied
@@ -1797,6 +1801,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // or sent, not a fresh one to re-show. Not gated on `locked`: read-only devices get the preview +
   // Take over (a local text copy); only the actual Send stays gated.
   const showPreview =
+    !directMessages &&
     !gone &&
     !sending &&
     previewLatched &&
@@ -1845,7 +1850,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     dropPending(handover.key, [handover.id]);
   }, [heldRows]);
   const heldCard =
-    drawnHeld !== undefined && drawnHeld.length > 0 ? (
+    !directMessages && drawnHeld !== undefined && drawnHeld.length > 0 ? (
       <HeldCard
         key={`${scopeId}|${paneId}`}
         paneId={paneId}
@@ -1866,7 +1871,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // sheet. It floats with the others, under the held card, so it moves nothing; the cross keeps it quiet
   // until the streak ends. Off on a crew member's pane (the next slice) and when Settings turned it off.
   const reportCard =
-    reportOn && reportCount > 0 ? (
+    !directMessages && reportOn && reportCount > 0 ? (
       <ReportCard
         count={reportCount}
         onReport={() => openReport({ paneId, scope, requestIds: streakIds(reportKey) })}
@@ -2164,10 +2169,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // every early return below has to answer honestly.
   //
   // THE ONE TEXT PATH (M56 spec 06). Every text goes to the bridge as one Send Protocol request: the
-  // bridge reads the screen fresh, refuses a dialog, a draft or a screen it cannot read before any key,
+  // bridge reads the screen fresh and refuses a dialog or a missing input box before any key.
   // probes where it must, and answers with a receipt. The phone reads nothing before a send and sends
-  // no key of its own: no pre-flight, no type-then-verify, no sweep of a stranded draft (a draft in
-  // the box is refused `draft_present` and offered Add, Replace or Cancel). A text that starts with a
+  // no key of its own. Direct profiles replace leftovers and consume old-bridge recovery offers
+  // once each; other profiles keep their draft offers. A text that starts with a
   // reserved lead (`/`, `!`, `@`) goes as a `command`, whose popup under the box is expected.
   /** The words for a send that cannot start now: the lock, the launch, or the send still running. */
   function refusedTapWords(): string | null {
@@ -2538,7 +2543,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       const secret = fromSecret && resend === undefined && view === undefined;
       const where = paneScopeKey(scope, paneId);
       const secretHeld = secret && secretIntentRef.current?.where === where ? secretIntentRef.current.intent : null;
-      const base: Parameters<typeof sendText>[0] = { paneId, text: t, scope, mode, rowsHash, capAck, resendOf: resend?.oldId, when, held: secret ? secretHeld : loadIntent(scope, paneId), secret, override };
+      const base: Parameters<typeof sendText>[0] = { paneId, profileId, text: t, scope, mode, rowsHash, capAck, resendOf: resend?.oldId, when, held: secret ? secretHeld : loadIntent(scope, paneId), secret, override };
       // The box lets go here, after the stored intent of this text was read for the request (M104).
       if (isDraft && !secret && resend === undefined && view === undefined && t.trim() !== "" && composeLine(draftAtSend, sentFrom.chips, isShell).trim() === t.trim() && !secretDraftRef.current && noEchoRef.current === null) {
         calm = startCalm(sentFrom, t, mode, seenUserUuids, sentAt);
@@ -2607,10 +2612,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       }
       // A resend makes no offer: an offer would carry the row's text, which may be masked. A sign-in code
       // makes none either: an offer keeps the text for a later tap, and a code is never kept (the M102 review, A).
-      const offered = reading.offers.length > 0 && resend === undefined && !secret;
+      const directMessage = directMessages && mode === "send" && when !== "steer" && !secret && view === undefined;
+      const tallDraft = directMessage && reply.outcome === "refused" && reply.reason === "draft_present" && reply.detail === TALL_DRAFT;
+      // An explicit override of an unread screen stays available; it is never an automatic recovery.
+      const manualOverride = reply.outcome === "refused" && reading.offers.includes("commit");
+      const offered = reading.offers.length > 0 && resend === undefined && !secret && (!directMessage || reading.cap !== null || manualOverride);
       setProtocolOffer(offered ? { text: t, isDraft, rowsHash: reply.rowsHash, offers: reading.offers, capAck: reading.cap !== null, draft: offerDraft(reply) } : null);
       // The revision the answer read: a Send again that waits for another send turns on once a later read differs.
-      const refusal = { ...readingRefusal(reading), atRevision: (reply.surface ?? shownSurface).revision };
+      const hardStop = directMessage && reading.note === "typed" && (reply.reason === "modal_cue" || reading.toCard || reading.offers.length === 0 || reply.detail !== null);
+      const recoveryNote = !hardStop && directMessage && reading.cap === null && (reading.note === "typed" || reading.note === "draft" || reading.note === "draftCommand" || reading.note === "unknown");
+      const refusal = { ...readingRefusal(hardStop ? { ...reading, note: "notFree" } : reading), atRevision: (reply.surface ?? shownSurface).revision };
       // A screen Collie cannot read: the pane opens its card, with the person's Keys pad and "Type it
       // anyway", instead of a sentence only (M102 spec 03).
       // A not_free refusal now offers Send anyway (invariant I4), so its step is the offer; the card of a screen
@@ -2625,7 +2636,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       if (override && typeAnywaySendRef.current && reply.outcome === "refused" && reply.cap === null && reply.rowsHash !== null) setOverrideHash(reply.rowsHash);
       const noticeOn = reply.surface ?? shownSurface;
       const notice: SendRefusal = { ...refusal, sentence: refusalSentence(refusal.sentence, { returnedDraft, note: reading.note, draftSeen: reply.draftSeen === true, alreadyTyped: reply.textAlreadyTyped === true, overrideMoved: override && reply.outcome === "refused" && (reply.reason === "stale_surface" || reply.reason === "stale_view") && reply.rowsHash !== null }) };
-      setSendRefusal(notice, noticeOn, offered);
+      // A tall draft gets the same quiet notice as other draft refusals. Open Keys works beside it.
+      if (tallDraft) setSendRefusal({ ...phoneRefusal(translate("composer.protocol.tallDraft")), tone: "neutral" }, noticeOn);
+      else setSendRefusal(recoveryNote ? null : notice, noticeOn, offered);
       // An `unknown` outcome is an open question the journal can still answer (#511): remember the
       // send, so its text landing as a user turn retires this notice and the kept draft. A resend
       // carries no text of its own to recognise, so it is never remembered.
@@ -2637,7 +2650,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         if (isDraft && t !== "") rememberUnknownSend(scope, paneId, t, Date.now(), isShell);
         // The bridge took the text and could not see it land: the pane's card asks which it was (M102 spec 04). Only
         // an `unknown` receipt has a request to mark; a sign-in code keeps no text, so it awaits nothing to send again.
-        if (reply.outcome === "unknown") setUnknownAnswer({ requestId: res.requestId, secret, awaitingUntil: awaitingOnPhone(reply.awaitingUntil), noticeKey: refusalKey(notice, noticeOn), interrupted: reply.reason === "interrupted" });
+        if (reply.outcome === "unknown" && !directMessage) setUnknownAnswer({ requestId: res.requestId, secret, awaitingUntil: awaitingOnPhone(reply.awaitingUntil), noticeKey: refusalKey(notice, noticeOn), interrupted: reply.reason === "interrupted" });
       }
       // A password prompt on the screen the composer already shows (#103): the bridge could not see
       // the text land, because the prompt never echoes it. Say so, drop the stored draft, offer Type.
@@ -4696,15 +4709,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               direct.active
                 ? direct.onKeyDown
                 : (e) => {
+                    if (e.key !== "Enter") return;
                     // Held: Enter, with or without a modifier, changes nothing and sends nothing.
-                    if (startHeld && e.key === "Enter") {
+                    if (startHeld) {
                       e.preventDefault();
                       return;
                     }
-                    // Ctrl/Cmd+Enter always sends. A bare Enter sends only from a hardware key with the
-                    // device's setting on; the rule is lib/enter-key.ts (ADR 0157), and every other press
-                    // is left to the browser, a new line. The menus around the box take no keys, so
-                    // none of them has an Enter to lose, and the sign-in field is its own component.
+                    // Ordinary direct replies use either keyboard. Other replies and commands use the
+                    // device's physical-keyboard setting. The sign-in field has its own handler.
                     const answer = enterKeyAnswer(
                       {
                         key: e.key,
@@ -4719,6 +4731,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                       },
                       softKeyboard,
                       enterChoice,
+                      directMessages && modeFor(input.trim()) === "send",
                     );
                     // "hint": the Enter still adds its new line; the offer appears above the box.
                     if (answer === "hint") setEnterOffer(true);

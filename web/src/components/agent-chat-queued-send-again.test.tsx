@@ -61,7 +61,8 @@ function mountWithLostCard(discard: () => Response, over: Partial<AgentView> = {
     }),
     ...sendHandler((request) => sendAnswer(request.id, "sent")),
   );
-  const agent: AgentView = { ...fixtureAgents[0]!, hasSession: true, ...over };
+  // Muse retains upstream queued cards; the owner's Claude/Codex phone messages use direct send.
+  const agent: AgentView = { ...fixtureAgents[0]!, agent: "muse", hasSession: true, ...over };
   const element = withHeaderHost(
     <AgentChat paneId={agent.paneId} agent={agent} agents={[agent]} shellPanes={[]} tabs={[]} text={paneTextWithDraft("recent pane output")} onBack={vi.fn()} onSelect={vi.fn()} />,
   );

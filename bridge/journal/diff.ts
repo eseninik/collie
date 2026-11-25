@@ -42,7 +42,9 @@ const BODY = /^[ +\-\\]/;
  * PURE. Tolerant by design: a patch reaches us as whatever a harness chose to write, and a clipped
  * or preamble-heavy one must still yield the hunks it does contain rather than throw.
  */
-export function parseUnifiedDiff(patch: string): DiffFold {
+export function parseUnifiedDiff(patch: string, options: { readonly preamble?: boolean } = {}): DiffFold {
+  // Codex's apply_patch body has no file headers: there a `---` or `+++` line is a changed line.
+  const preamble = options.preamble ?? true;
   const hunks: Hunk[] = [];
   let current: Hunk | undefined;
   let added = 0;
@@ -54,7 +56,7 @@ export function parseUnifiedDiff(patch: string): DiffFold {
       hunks.push(current);
       continue;
     }
-    if (PREAMBLE.test(line)) continue;
+    if (preamble && PREAMBLE.test(line)) continue;
     if (!BODY.test(line)) continue;
     if (current === undefined) {
       // Context with nothing to belong to is noise; a marker line is a real change and earns a

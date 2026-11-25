@@ -1,0 +1,40 @@
+  other tools.
+
+
+[2m• [0mCapture complete.
+
+[2m  Worked for 18s • 09:40
+[0m
+
+[1;2m› [0mUI capture only. Run sleep 180 with exec_command. If it returns a running
+  session, poll that same session with write_stdin until it exits; do not
+  finish your turn before then. Do not read or write any files. Then say
+  Capture complete.
+
+
+[2m• [0mКоманда ещё работает. Продолжаю ждать её завершения.
+
+[2m• [0mКоманда ещё работает. Жду завершения той же сессии.
+
+[1m•[0m [1mRan[0m sleep 180
+[2m  └ (no output)[0m
+
+[2m• [0mCapture complete.
+
+[2m  Worked for 3m 6s • 09:44
+[0m
+
+[1;2m› [0mQueued UI capture. Reply Queue complete after the wait.
+
+
+[2m• [0mQueue complete
+[2m  └ [0;1mTip:[0m You can resume a previous conversation by running codex resume
+
+[2m  Worked for 3s • 09:44
+[0m
+
+[1m›[0m [2mAsk Codex to do anything[0m
+
+  GPT-6.1-Sol low · weekly 39% left · Context 97% left · /tmp/collie-codex169-
+  probe
+  [1m←[0m for agents · [1m?[0m for shortcuts                       ⚠ 1 warning · [1mf2[0m to view

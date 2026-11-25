@@ -6,7 +6,7 @@
 // Modifiers, case-insensitive: `ctrl|control`, `shift`, `alt|option|meta`, `cmd|command|super`, and
 // `mod`, which is `cmd` on a Mac and `ctrl` elsewhere. Herdr reads `meta` as Alt, so this does too:
 // in the file, Cmd is spelled `cmd`. Keys: one character, or `space enter|return esc|escape tab
-// backspace|bs left right up down f1..f12 minus comma period slash backslash quote
+// backspace|bs insert left right up down f1..f12 minus comma period slash backslash quote
 // double_quote semicolon colon percent ampersand backtick plus`. A literal `+` is `plus` or `++`.
 // An upper-case letter adds Shift. `1..9` stands for the nine digits and is valid for an indexed
 // action only. Source of the grammar: herdr src/config/keybinds.rs (`parse_key_combo`).
@@ -61,6 +61,7 @@ const NAMED_KEYS: ReadonlyMap<string, string> = new Map([
   ["tab", "tab"],
   ["backspace", "backspace"],
   ["bs", "backspace"],
+  ["insert", "insert"],
   ["left", "left"],
   ["right", "right"],
   ["up", "up"],
@@ -185,6 +186,7 @@ const KEY_CAPS: ReadonlyMap<string, string> = new Map([
   ["esc", "Esc"],
   ["tab", "Tab"],
   ["backspace", "Backspace"],
+  ["insert", "Insert"],
   ["left", "Left"],
   ["right", "Right"],
   ["up", "Up"],

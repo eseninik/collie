@@ -170,7 +170,7 @@ export const zhTW: Dictionary = {
     "「自動」會在寬度至少 600 px 且高度至少 480 px 的螢幕上顯示側邊欄和窗格欄位。「關閉」則在所有位置維持手機版面配置。",
   "settings.enterSends.title": "Enter 傳送",
   "settings.enterSends.hint":
-    "使用實體鍵盤時，Enter 會傳送訊息，Shift+Enter 會換行。使用螢幕鍵盤時，Enter 一律換行。",
+    "使用實體鍵盤時，Enter 會傳送訊息，Shift+Enter 會換行。即使關閉這項設定，也能在任一鍵盤上按 Enter 向 Claude 和 Codex 傳送一般訊息。",
   "settings.projectPictures.title": "專案圖片",
   "settings.projectPictures.hint":
     "以儲存庫 collie.toml 指定的圖片取代代理的標誌，標誌顯示在角落，並作為推播通知的圖示。",
@@ -625,6 +625,7 @@ export const zhTW: Dictionary = {
   "composer.protocol.overrideMoved": "你的文字輸入前畫面已變更，所以沒有輸入任何內容。請現在查看畫面，然後點按「傳送」，再點按「仍然傳送」。",
   "composer.protocol.overrideTyped": "你的文字已在代理的輸入框中。Collie 沒有按 Enter。請檢查螢幕，然後在按鍵面板上按 Enter。",
   "composer.protocol.draftUnseen": "輸入框裡有一份 Collie 無法完整讀取的草稿，所以沒有輸入任何內容。「清空輸入框」按鈕會刪除這份草稿。之後請再次傳送。",
+  "composer.protocol.tallDraft": "草稿超出輸入框的高度，Collie 無法判斷草稿的長度。沒有刪除任何內容。請用鍵盤清空輸入框，再重新傳送。",
   "composer.step.sendAgain": "再次傳送",
   "composer.step.stop": "停止這一輪",
   "composer.step.emptyBox": "清空輸入框",
@@ -1648,6 +1649,7 @@ export const zhTW: Dictionary = {
   "connection.stale.messageTemplate": "{reason}。{detail}",
   "connection.session.title": "工作區",
   "connection.session.aria": "工作區：{name}。切換工作區",
+  "connection.session.moveAria": "移動 {name}",
   "connection.session.primary": "主要工作階段",
   "connection.session.unreachable": "無法連線",
   "connection.session.ariaIn": "目前工作區：{name}",

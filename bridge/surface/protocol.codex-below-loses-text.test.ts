@@ -47,6 +47,8 @@ const warningHint = (hint: string): boolean => hint.includes("⚠");
 describe("a Codex hint row that loses words at the first character (#847), on the real 0.166 captures", () => {
   const warningEmpty = (): string[] => capture("codex--v0166-warning-art-empty--w120.txt");
   const warningTyped = (): string[] => capture("codex--v0166-warning-typed--w120.txt");
+  // Keep testing the probe even when the installed profile verifies this version.
+  const probeProfile = { harness: "codex", version: "0.166.0", status: "provisional" } as const;
 
   test("the profile sets the rule", async () => {
     const { loadProfiles } = await import("../../web/src/lib/surface/profile.ts");
@@ -55,34 +57,34 @@ describe("a Codex hint row that loses words at the first character (#847), on th
 
   test("with no warning pattern the lone warning row is the S0 hint row less its shortcut text: the probe passes by the rule alone and Tab sends", async () => {
     const fake = capturedPane(warningEmpty(), warningTyped());
-    const answer = await rig({ pane: fake, harness: "codex", version: "0.166.0", edit: withoutHints(warningHint) }).send("reply with one word: ready");
+    const answer = await rig({ pane: fake, ...probeProfile, edit: withoutHints(warningHint) }).send("reply with one word: ready");
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Tab"] });
     expect(fake.transcript.at(-1)).toBe("› reply with one word: ready");
   });
 
   test("a command goes in the same way: its probe and its S1 read the one count", async () => {
     const fake = capturedPane(warningEmpty(), warningTyped());
-    const answer = await rig({ pane: fake, harness: "codex", version: "0.166.0", edit: withoutHints(warningHint) }).send("/status", { mode: "command" });
+    const answer = await rig({ pane: fake, ...probeProfile, edit: withoutHints(warningHint) }).send("/status", { mode: "command" });
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
   });
 
   test("a profile without the rule refuses the same screens as before", async () => {
     const fake = capturedPane(warningEmpty(), warningTyped());
-    const answer = await rig({ pane: fake, harness: "codex", version: "0.166.0", edit: withoutHints(warningHint, false) }).send("reply with one word: ready");
+    const answer = await rig({ pane: fake, ...probeProfile, edit: withoutHints(warningHint, false) }).send("reply with one word: ready");
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe", "Backspace"] });
     expect(fake.keysSeen.filter((key) => key === "Tab" || key === "Enter")).toEqual([]);
   });
 
   test("a row that no S0 hint row gives fails: S0 shows only the shortcut hint, and the warning row stands there after the probe", async () => {
     const fake = capturedPane(capture("codex--v0166-art-empty--w120.txt"), warningTyped());
-    const answer = await rig({ pane: fake, harness: "codex", version: "0.166.0", edit: withoutHints(warningHint) }).send("reply with one word: ready");
+    const answer = await rig({ pane: fake, ...probeProfile, edit: withoutHints(warningHint) }).send("reply with one word: ready");
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
     expect(fake.keysSeen.filter((key) => key === "Tab" || key === "Enter")).toEqual([]);
   });
 
   test("a real dialog after the probe still blocks: no submit key", async () => {
     const fake = capturedPane(warningEmpty(), capture("codex--approval-exec.txt"));
-    const answer = await rig({ pane: fake, harness: "codex", version: "0.166.0" }).send("reply with one word: ready");
+    const answer = await rig({ pane: fake, ...probeProfile }).send("reply with one word: ready");
     expect(answer.receipt?.outcome).toBe("refused");
     expect(fake.keysSeen.filter((key) => key === "Tab" || key === "Enter")).toEqual([]);
   });
@@ -93,6 +95,51 @@ describe("a Codex hint row that loses words at the first character (#847), on th
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
     expect(fake.box).toBe("x");
     expect(fake.keysSeen.filter((key) => key === "Tab" || key === "Enter")).toEqual([]);
+  });
+
+  describe("@req:FIX-1301-CODEX-VERIFIED @oracle:requirement verified Codex sends from CLI or crew", () => {
+    const verifiedProfile = { harness: "codex", version: "0.166.0" };
+    const reply = "reply with one word: ready";
+
+    test("the warning row loses only shortcut words and a message sends with Tab without a probe", async () => {
+      const fake = capturedPane(warningEmpty(), warningTyped());
+      const answer = await rig({ pane: fake, ...verifiedProfile, edit: withoutHints(warningHint) }).send(reply);
+      expect(answer.receipt).toMatchObject({ outcome: "sent", profileStatus: "verified", keys: ["Tab"] });
+      expect(fake.keysSeen).toEqual(["Tab"]);
+      expect(fake.transcript.at(-1)).toBe(`› ${reply}`);
+    });
+
+    test("the same footer change lets a command send with Enter without a probe", async () => {
+      const fake = capturedPane(warningEmpty(), warningTyped());
+      const answer = await rig({ pane: fake, ...verifiedProfile, edit: withoutHints(warningHint) }).send("/status", { mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "sent", profileStatus: "verified", keys: ["Enter"] });
+      expect(fake.keysSeen).toEqual(["Enter"]);
+      expect(fake.transcript.at(-1)).toBe("› /status");
+    });
+
+    test("without the rule the lone warning blocks submission", async () => {
+      const fake = capturedPane(warningEmpty(), warningTyped());
+      const answer = await rig({ pane: fake, ...verifiedProfile, edit: withoutHints(warningHint, false) }).send(reply);
+      expect(answer.receipt).toMatchObject({ profileStatus: "verified" });
+      expect(answer.receipt?.outcome).not.toBe("sent");
+      expect(fake.keysSeen.filter((key) => key === "Tab" || key === "Enter")).toEqual([]);
+    });
+
+    test("a warning row with words absent from the old hint blocks submission", async () => {
+      const fake = capturedPane(capture("codex--v0166-art-empty--w120.txt"), warningTyped());
+      const answer = await rig({ pane: fake, ...verifiedProfile, edit: withoutHints(warningHint) }).send(reply);
+      expect(answer.receipt).toMatchObject({ profileStatus: "verified" });
+      expect(answer.receipt?.outcome).not.toBe("sent");
+      expect(fake.keysSeen.filter((key) => key === "Tab" || key === "Enter")).toEqual([]);
+    });
+
+    test("an approval dialog appearing after typing blocks both Tab and Enter", async () => {
+      const fake = capturedPane(warningEmpty(), capture("codex--approval-exec.txt"));
+      const answer = await rig({ pane: fake, ...verifiedProfile }).send(reply);
+      expect(answer.receipt).toMatchObject({ profileStatus: "verified" });
+      expect(answer.receipt?.outcome).not.toBe("sent");
+      expect(fake.keysSeen.filter((key) => key === "Tab" || key === "Enter")).toEqual([]);
+    });
   });
 });
 
@@ -149,6 +196,47 @@ describe("Codex 0.171.0 after a goal that ended achieved (#847), on the real cap
       expect(fake.keysSeen.filter((key) => key === "Tab" || key === "Enter")).toEqual([]);
     });
   }
+
+  const reply = "reply with one word: ready";
+  test.each([
+    ["with the full reply visible", reply],
+    ["with only the start of the reply visible", "reply with one word"],
+  ] as const)("@req:PORT-1301-CODEX-FOOTER @oracle:requirement a phone send uses Tab once without probing when the Goal achieved footer loses the shortcut words %s", async (_name, visible) => {
+    const fake = capturedPane(capture(states[0].empty), capture(states[0].probe));
+    const render = fake.render;
+    fake.render = () => render().replace(reply, visible);
+    const answer = await rig({ pane: fake, harness: "codex", version: "0.171.0" }).send(reply, { fromPhone: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Tab"] });
+    expect(fake.keysSeen).toEqual(["Tab"]);
+    expect(fake.calls).toHaveLength(1);
+    expect(fake.calls[0]).toContain(reply);
+    expect(fake.transcript.filter((row) => row === `› ${reply}`)).toEqual([`› ${reply}`]);
+    expect(fake.box).toBe("");
+  });
+
+  test("@req:PORT-1301-CODEX-FOOTER @oracle:requirement a phone send leaves the pasted reply in place when the footer gains new words", async () => {
+    const typed = capture(states[0].probe).map((row) => row.replace("Goal achieved (2s)", "Review is waiting (2s)"));
+    const fake = capturedPane(capture(states[0].empty), typed);
+    const answer = await rig({ pane: fake, harness: "codex", version: "0.171.0" }).send(reply, { fromPhone: true });
+    expect(answer.receipt).toBeDefined();
+    expect(answer.receipt?.outcome).not.toBe("sent");
+    expect(fake.keysSeen.filter((key) => key === "Tab" || key === "Enter")).toEqual([]);
+    expect(fake.box).toBe(reply);
+  });
+
+  test("@req:PORT-1301-CODEX-FOOTER @oracle:requirement a phone send leaves the reply in place when a new footer row appears after a swallowed Tab", async () => {
+    const fake = capturedPane(capture(states[0].empty), capture(states[0].probe));
+    const render = fake.render;
+    fake.beforeWrite = (pane, write) => {
+      pane.swallow = write === "keys:Tab" && !pane.keysSeen.includes("Tab");
+    };
+    fake.render = () => fake.keysSeen.includes("Tab") ? `${render()}\n  Review is waiting.` : render();
+    const answer = await rig({ pane: fake, harness: "codex", version: "0.171.0" }).send(reply, { fromPhone: true });
+    expect(answer.receipt).toBeDefined();
+    expect(answer.receipt?.outcome).not.toBe("sent");
+    expect(fake.keysSeen.filter((key) => key === "Tab" || key === "Enter")).toEqual(["Tab"]);
+    expect(fake.box).toBe(reply);
+  });
 
   test("a draft still blocks on the captured screen: refused draft_present, the draft kept", async () => {
     const fake = goalPane(states[1]);

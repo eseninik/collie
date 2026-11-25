@@ -174,7 +174,7 @@ export const it: Dictionary = {
     "Automatico mostra la barra laterale e le colonne dei riquadri su uno schermo largo almeno 600 px e alto almeno 480 px. Disattivato mantiene ovunque il layout per smartphone.",
   "settings.enterSends.title": "Invio invia",
   "settings.enterSends.hint":
-    "Con una tastiera fisica, Invio invia il messaggio e Maiusc+Invio aggiunge una nuova riga. Con la tastiera sullo schermo, Invio aggiunge sempre una nuova riga.",
+    "Con una tastiera fisica, Invio invia il messaggio e Maiusc+Invio aggiunge una riga. I messaggi normali per Claude e Codex si inviano con Invio su entrambe le tastiere, anche con questa impostazione disattivata.",
   "settings.projectPictures.title": "Immagini di progetto",
   "settings.projectPictures.hint":
     "Mostra l'immagine che un repository indica nel suo collie.toml al posto del logo dell'agente, con il logo nell'angolo e come icona delle sue notifiche push.",
@@ -594,6 +594,7 @@ export const it: Dictionary = {
   "composer.protocol.overrideMoved": "La schermata è cambiata prima che il tuo testo arrivasse, quindi non è stato digitato nulla. Guarda la schermata, poi tocca Invia e infine Invia comunque.",
   "composer.protocol.overrideTyped": "Il tuo testo è nella casella dell'agente. Collie non ha premuto Invio. Controlla la schermata, poi premi Invio sui tasti.",
   "composer.protocol.draftUnseen": "La casella di input contiene una bozza che Collie non riesce a leggere per intero, quindi non è stato digitato nulla. Il pulsante ‘Svuota la casella’ elimina quella bozza. Poi invia di nuovo.",
+  "composer.protocol.tallDraft": "La bozza è più alta del campo di input, quindi Collie non può determinarne la lunghezza. Non è stato cancellato nulla. Svuota il campo con la tastiera e invia di nuovo.",
   "composer.step.sendAgain": "Invia di nuovo",
   "composer.step.stop": "Arresta il turno",
   "composer.step.emptyBox": "Svuota la casella",
@@ -1579,6 +1580,7 @@ export const it: Dictionary = {
   "connection.stale.messageTemplate": "{reason}. {detail}",
   "connection.session.title": "Spazi",
   "connection.session.aria": "Spazio: {name}. Cambia spazio",
+  "connection.session.moveAria": "Sposta {name}",
   "connection.session.primary": "principale",
   "connection.session.unreachable": "non raggiungibile",
   "connection.session.ariaIn": "Nello spazio: {name}",

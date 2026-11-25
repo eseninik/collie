@@ -99,12 +99,12 @@ describe("parseSendRequest", () => {
 });
 
 /** A pane that shows one idle box and takes text into it; Enter empties it. */
-function idlePane() {
+function idlePane(placeholder = "Try something") {
   let box = "";
   let revision = 1;
   const written: string[] = [];
   const render = (): string =>
-    ["> earlier", "", RULE, box === "" ? "❯ \u001b[2mTry something\u001b[0m" : `❯ ${box}`, RULE, "  status row"].join("\n");
+    ["> earlier", "", RULE, box === "" ? `❯ \u001b[2m${placeholder}\u001b[0m` : `❯ ${box}`, RULE, "  status row"].join("\n");
   return {
     written,
     // %7 is the engine's bare shell pane: a shell prompt, which the blind road types into.
@@ -132,8 +132,9 @@ function idlePane() {
   };
 }
 
-function runtime(withSend: boolean, dir: string, holds?: HoldStore, status?: "idle" | "working" | "blocked" | "done" | "unknown") {
-  const pane = idlePane();
+function runtime(withSend: boolean, dir: string, holds?: HoldStore, status?: "idle" | "working" | "blocked" | "done" | "unknown", agent: "claude" | "muse" = "claude") {
+  const pane = idlePane(agent === "muse" ? "Start a message with ! to run a shell command yourself" : undefined);
+  const version = agent === "muse" ? "1.4.7" : "2.1.200";
   let clock = 0;
   const store = new RequestStore(join(dir, "sends"), () => clock);
   const send = withSend
@@ -144,7 +145,7 @@ function runtime(withSend: boolean, dir: string, holds?: HoldStore, status?: "id
         holds,
         locks: new SessionLocks(),
         ring: new RowRing(),
-        profile: (harness) => Promise.resolve(profileFor(harness, "2.1.200", { log: () => undefined })),
+        profile: (harness) => Promise.resolve(profileFor(harness, version, { log: () => undefined })),
         generation: () => "gen",
         now: () => clock,
         sleep: (ms) => {
@@ -155,7 +156,7 @@ function runtime(withSend: boolean, dir: string, holds?: HoldStore, status?: "id
     : undefined;
   let pokes = 0;
   const engine = {
-    current: () => ({ agents: [status === undefined ? { paneId: "%1", agent: "claude" } : { paneId: "%1", agent: "claude", status }], shellPanes: [{ paneId: "%7" }] }),
+    current: () => ({ agents: [status === undefined ? { paneId: "%1", agent } : { paneId: "%1", agent, status }], shellPanes: [{ paneId: "%7" }] }),
     noteInput: () => undefined,
     pokeNow: () => {
       pokes++;
@@ -378,7 +379,7 @@ describe("the reply route runs the protocol (M56 spec 06)", () => {
   test("a member's reply route binds Add to it and Replace to the draft the offer showed, as /api/send does (ADR 0166)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
     try {
-      const { rt, pane } = runtime(true, dir);
+      const { rt, pane } = runtime(true, dir, undefined, undefined, "muse");
       const { audit } = auditLines();
       pane.setBox("half a thought");
       // The phone's first tap on a member's pane goes through the lead to this route, the body as the phone sent it.
@@ -411,7 +412,7 @@ describe("the reply route runs the protocol (M56 spec 06)", () => {
   test("a member's offer quotes the draft masked, as the mirror is, and keeps it out of the audit line (Brief 6)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
     try {
-      const { rt, pane } = runtime(true, dir);
+      const { rt, pane } = runtime(true, dir, undefined, undefined, "muse");
       const { audit, lines } = auditLines();
       // A shape the mask catches; a made-up value, not a real key.
       const key = `ghp_${"a1B2".repeat(9)}`;
@@ -577,9 +578,9 @@ describe("sendReceiptsRoute: a refusal's line and Surface words (2026-10-17 fiel
       const { audit } = auditLines();
       const context = { audit, device: null, redact: false, acceptEncoding: null };
       await sendRoute(rt, { id: "route-ok-0001", pane: "%1", text: "a private first message" }, context);
-      // Someone typed at the desk: the next send meets a draft and is refused.
+      // Slash commands retain the guarded draft refusal; ordinary phone messages replace it.
       await pane.typeText("%1", "half a private thought");
-      const res = await sendRoute(rt, { id: "route-no-0001", pane: "%1", text: "a private second message" }, context);
+      const res = await sendRoute(rt, { id: "route-no-0001", pane: "%1", text: "/compact a private second message", mode: "command" }, context);
       const answer = await res.json();
       expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
       expect(answer.receipt.detail).toEqual(expect.any(String));
@@ -590,7 +591,7 @@ describe("sendReceiptsRoute: a refusal's line and Surface words (2026-10-17 fiel
       expect(listed.receipts[1].detail).toBeUndefined();
       expect(listed.receipts[1].saw).toBeUndefined();
       // Both rows carry their own text as a line; the draft someone typed at the desk is a screen row and never listed.
-      expect(listed.receipts[0].line).toBe("a private second message");
+      expect(listed.receipts[0].line).toBe("/compact a private second message");
       expect(listed.receipts[1].line).toBe("a private first message");
       expect(JSON.stringify(listed)).not.toContain("half a private thought");
     } finally {
