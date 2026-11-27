@@ -229,6 +229,49 @@ describe("@req:DS_UI @oracle:requirement direct-send composer", () => {
   });
 });
 
+describe("direct-send refusals", () => {
+  it("Claude's unconfirmed refusal points to the screen or Keys @req:UNREAD-REWORK-REFUSAL-COPY @oracle:requirement", async () => {
+    const user = userEvent.setup();
+    const sends = bridge([{
+      ...reply("refused", "unconfirmed", ["commit", "keys"]),
+      detail: "Collie cannot read this screen. Check the pane, then tap Type here.",
+      surface: { revision: 1, turn: "idle", modal: "none", composer: "empty" },
+    }]);
+    renderComposer("claude");
+    const draft = "keep these words";
+    await user.type(screen.getByRole("textbox"), draft);
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    const refusal = await waitFor(() => {
+      const notice = document.querySelector('[data-slot="composer-refusal"]');
+      expect(notice).toBeVisible();
+      return notice;
+    });
+    expect(refusal).toHaveTextContent("Collie cannot read this screen. Check the screen or open Keys.");
+    expect(refusal).not.toHaveTextContent(/Type here|Send anyway/iu);
+    expect(screen.queryByRole("button", { name: /^(Type here|Send anyway)$/iu })).toBeNull();
+    expect(screen.getByRole("textbox")).toHaveValue(draft);
+    expect(sends).toHaveLength(1);
+  });
+
+  it.each(["claude", "codex"] as const)("%s keeps a refused steer free of Send anyway @req:UNREAD-REWORK-STEER @oracle:requirement", async (agent) => {
+    const user = userEvent.setup();
+    const running = { revision: 1, turn: "running", modal: "none", composer: "empty" } as const;
+    const sends = bridge([{ ...reply("refused", "not_free", ["keys"]), surface: running }]);
+    renderComposer(agent, { surface: running, canSteer: true });
+    const draft = "try another route";
+    await user.type(screen.getByRole("textbox"), draft);
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Send" }));
+    await user.click(await screen.findByRole("button", { name: "Steer: the agent takes it after its current step" }));
+
+    expect(await screen.findByText(/The input box is not free, so nothing was typed\./u)).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Send anyway" })).toBeNull();
+    expect(screen.getByRole("textbox")).toHaveValue(draft);
+    expect(sends).toHaveLength(1);
+    expect(sends[0]).toMatchObject({ when: "steer", mode: "send", text: draft });
+  });
+});
+
 describe("@req:COLLIE-1291-SOFT-DIRECT-ENTER @oracle:requirement Composer Enter", () => {
   const profiles = ["claude", "codex"] as const;
   const message = "send this from the phone";

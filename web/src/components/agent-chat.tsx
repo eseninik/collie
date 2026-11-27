@@ -2286,10 +2286,10 @@ export function AgentChat({
         revalidator.revalidate();
         return true;
       }
-      setStatus(readingRefusal(result.reading).sentence, "error");
+      setStatus(readingRefusal(result.reading, !directMessages).sentence, "error");
       return false;
     },
-    [refuseWrite, paneId, scope, revalidator],
+    [refuseWrite, paneId, scope, revalidator, directMessages],
   );
 
   // NOTE: the composer is deliberately NOT auto-focused on open/switch — that would pop the Android
@@ -3596,7 +3596,7 @@ export function AgentChat({
                 exitShown === null ? null : { caption: t(EXIT_SENTENCE[exitShown.why]), lines: screenLines, onClose: () => setAnswerExit(null) }
               }
               onUnreadPadKeys={(keys) => composerRef.current?.padKeys(keys) ?? Promise.resolve(false)}
-              onUnreadTypeAnyway={unreadPast ? () => composerRef.current?.typeAnyway() : undefined}
+              onUnreadTypeAnyway={!directMessages && unreadPast ? () => composerRef.current?.typeAnyway() : undefined}
               unreadSecret={unreadSecret || composerSurface.field === "secret"}
               // The send Collie cannot tell about: the screen as it is now, and the person's two answers (M102 spec 04).
               cannotTell={

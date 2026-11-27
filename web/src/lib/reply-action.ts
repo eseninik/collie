@@ -100,10 +100,11 @@ export function modeFor(text: string): SendMode {
  */
 export async function sendText(args: ReplyArgs): Promise<ReplyOutcome> {
   const mode = args.mode ?? modeFor(args.text);
-  const direct = directSendProfile(args.profileId) && mode === "send" && !isCommand(args.text) && args.when !== "steer" && args.secret !== true && args.view === undefined && args.override !== true;
+  const directSend = directSendProfile(args.profileId) && mode === "send" && !isCommand(args.text) && args.secret !== true && args.view === undefined && args.override !== true;
+  const direct = directSend && args.when !== "steer";
   const recovery = direct && args.held?.recovery?.originalKey === sendIntentKey(args) ? args.held.recovery : undefined;
   const resumed = recovery === undefined ? args : { ...args, mode: recovery.mode, rowsHash: recovery.rowsHash };
-  let result = await sendRequest(resumed);
+  let result = await sendRequest(resumed, !directSend);
   if (!direct) return result;
   if (result.status === "noAnswer" && recovery !== undefined) return { ...result, intent: { ...result.intent, recovery } };
   for (const follow of ["replace", "submit"] as const) {
@@ -117,7 +118,7 @@ export async function sendText(args: ReplyArgs): Promise<ReplyOutcome> {
     if (reply.reason === "changed" && (reply.detail !== null || reply.surface?.composer === "unknown" || reply.surface?.composer === "unreachable")) return result;
     if (!reply.offers.includes(follow)) continue;
     const rowsHash = reply.rowsHash;
-    result = await sendRequest({ ...args, mode: follow, rowsHash, capAck: false, held: null });
+    result = await sendRequest({ ...args, mode: follow, rowsHash, capAck: false, held: null }, false);
     if (result.status === "noAnswer") return { ...result, intent: { ...result.intent, recovery: { originalKey: sendIntentKey(args), mode: follow, rowsHash } } };
   }
   return result;
@@ -136,7 +137,7 @@ function sendIntentKey(args: ReplyArgs): string {
 }
 
 /** One request with its own id. A lost answer retries this intent, never a raw submit key. */
-async function sendRequest(args: ReplyArgs): Promise<ReplyOutcome> {
+async function sendRequest(args: ReplyArgs, allowOverride: boolean): Promise<ReplyOutcome> {
   // The backstop behind every disabled Send: a UI that slipped through (a stale render, a handler held
   // across an outage) still cannot reach the bridge from a pane it has not just read.
   if (!isLive(args.paneId, args.scope)) {
@@ -152,7 +153,7 @@ async function sendRequest(args: ReplyArgs): Promise<ReplyOutcome> {
   const body: SendRequestBody = args.view === undefined ? { id: intent.requestId, pane: args.paneId, text: args.text, mode } : { id: intent.requestId, pane: args.paneId, text: args.text, mode, view: args.view };
   try {
     const reply = await postSend({ ...body, rowsHash: rowsHash ?? undefined, capAck: capAck ? true : undefined, resendOf, when: args.when, secret: args.secret === true ? true : undefined, override: override ? true : undefined }, args.scope);
-    return { status: "answered", reply, reading: readSend(reply, mode), requestId: intent.requestId };
+    return { status: "answered", reply, reading: readSend(reply, mode, allowOverride), requestId: intent.requestId };
   } catch (e) {
     // A view send the bridge refused before the Send Protocol answers 409 with `{ error, code, view: true }`.
     // It is an answer, not a lost one: never retried under the same id.

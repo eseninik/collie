@@ -612,6 +612,7 @@ export const ko: Dictionary = {
   "composer.protocol.typed": "텍스트를 입력했지만 Enter는 누르지 않았습니다. 제출하거나 삭제하세요.",
   "composer.protocol.unconfirmed": "Collie가 이 화면을 읽을 수 없습니다. 창을 확인한 뒤 ‘여기에 입력’을 누르세요.",
   "composer.protocol.unconfirmedPast": "Collie가 이 화면을 읽을 수 없습니다. 창을 확인한 뒤 ‘그래도 전송’을 누르세요.",
+  "composer.protocol.unconfirmedScreen": "Collie가 이 화면을 읽을 수 없습니다. 화면을 확인하거나 키를 여세요.",
   "composer.protocol.alreadyTyped": "이 텍스트는 이미 에이전트 입력란에 있어서 다시 입력되지 않았습니다. 키 패드에서 Enter를 누르세요.",
   "composer.protocol.noticeKey": "해당 메시지는 상자 위의 알림에 응답합니다. 창을 확인한 다음 ‘여기에 입력’을 탭하십시오.",
   "composer.protocol.noticeKeyPast": "해당 메시지는 입력란 위의 알림에 대한 답이 됩니다. 창을 확인한 뒤 ‘그래도 전송’을 누르세요.",

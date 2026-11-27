@@ -629,6 +629,7 @@ export const de: Dictionary = {
   "composer.protocol.typed": "Dein Text steht im Feld, aber Enter wurde nicht gedrückt. Absenden oder verwerfen.",
   "composer.protocol.unconfirmed": "Collie kann diesen Bildschirm nicht lesen. Prüfe den Bereich und tippe dann auf Hier tippen.",
   "composer.protocol.unconfirmedPast": "Collie kann diesen Bildschirm nicht lesen. Prüfe das Pane und tippe dann auf Trotzdem senden.",
+  "composer.protocol.unconfirmedScreen": "Collie kann diesen Bildschirm nicht lesen. Prüfe den Bildschirm oder öffne die Tasten.",
   "composer.protocol.alreadyTyped": "Dieser Text stand schon im Feld des Agenten, daher wurde nichts erneut getippt. Drücke Enter über die Tasten.",
   "composer.protocol.noticeKey": "Diese Nachricht würde den Hinweis über dem Feld beantworten. Prüfe den Bereich und tippe dann auf Hier eingeben.",
   "composer.protocol.noticeKeyPast": "Diese Nachricht würde den Hinweis über dem Feld beantworten. Prüfe das Pane und tippe dann auf Trotzdem senden.",

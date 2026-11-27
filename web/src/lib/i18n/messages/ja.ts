@@ -611,6 +611,7 @@ export const ja: Dictionary = {
   "composer.protocol.typed": "テキストは入力欄にありますが、Enter は押されていません。送信するか破棄してください。",
   "composer.protocol.unconfirmed": "Collie はこの画面を読めません。ペインを確認してから「ここに入力」をタップしてください。",
   "composer.protocol.unconfirmedPast": "Collie はこの画面を読み取れません。ペインを確認してから「それでも送信」をタップしてください。",
+  "composer.protocol.unconfirmedScreen": "Collie はこの画面を読めません。画面を確認するか、キーを開いてください。",
   "composer.protocol.alreadyTyped": "このテキストはすでにエージェントの入力欄にあったため、再入力されていません。キーパッドで Enter を押してください。",
   "composer.protocol.noticeKey": "そのメッセージは、入力欄の上の通知に対応します。ペインを確認し、「ここに入力」をタップします。",
   "composer.protocol.noticeKeyPast": "そのメッセージは、入力欄の上の通知に対する回答になります。ペインを確認してから「それでも送信」をタップしてください。",

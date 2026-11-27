@@ -15,11 +15,16 @@ import type { StopReason, StopReceipt } from "@/lib/surface/stop";
 // buttons it can act on.
 
 /** The sentence for an answer that did not send: the bridge's verdict, then what it saw on the screen. */
-export function answerSentence(reading: SendReading): string {
+export function answerSentence(reading: SendReading, allowOverride = true): string {
+  let key: MessageKey = noteKey(reading.note);
+  if (!allowOverride) {
+    if (reading.note === "unconfirmed") key = "composer.protocol.unconfirmedScreen";
+    if (reading.note === "typed") key = "apiError.reply.not_submitted";
+  }
   // The cap's sentence names the count, the harness and its version (M56 spec 09).
   const note =
     reading.cap === null
-      ? translate(noteKey(reading.note))
+      ? translate(key)
       : capSentence(reading.cap, (vars) => translate("composer.protocol.capConfirmPast", vars));
   // A draft refusal already says what the screen held, and "The agent is working" already says the turn runs.
   if (reading.surface === null || reading.note === "draft" || reading.note === "draftCommand" || reading.note === "draftUnseen" || reading.note === "agentBusy") return note;
@@ -201,9 +206,9 @@ export function RefusalActions({ step, wait, onCard, onScreen, onKeys }: Refusal
 }
 
 /** The notice for an answer that did not send, from the bridge's reading of it. */
-export function readingRefusal(reading: SendReading): SendRefusal {
+export function readingRefusal(reading: SendReading, allowOverride = true): SendRefusal {
   return {
-    sentence: answerSentence(reading),
+    sentence: answerSentence(reading, allowOverride),
     detail: reading.detail,
     toCard: reading.toCard,
     screen: READ_THE_SCREEN.has(reading.note),

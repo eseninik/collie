@@ -38,8 +38,8 @@ beforeEach(() => {
   localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ paneView: "chat", showToolCalls: true }));
 });
 
-function mount(harness: "claude" | "codex", device?: DeviceAuth) {
-  const agent: AgentView = { ...fixtureAgents[0]!, agent: harness, hasSession: true, surface: FREE };
+function mount(harness: "claude" | "codex", device?: DeviceAuth, surface = FREE) {
+  const agent: AgentView = { ...fixtureAgents[0]!, agent: harness, hasSession: true, surface };
   const element = withHeaderHost(
     <AgentChat device={device} paneId={agent.paneId} agent={agent} agents={[agent]} shellPanes={[]} tabs={[]} text={paneTextWithDraft("recent pane output")} onBack={vi.fn()} onSelect={vi.fn()} />,
   );
@@ -66,6 +66,26 @@ describe("@req:PORT-DIRECT-UNKNOWN @oracle:requirement AgentChat ordinary direct
       expect(screen.queryByRole("button", { name })).toBeNull();
     }
     expect(screen.queryByText("Draft in terminal", { exact: true })).toBeNull();
+  });
+
+  it("Claude's unknown receipt on an unreadable screen raises no unread card @req:UNREAD-REWORK-UNKNOWN @oracle:requirement", async () => {
+    const unreadable: Surface = { revision: 1, turn: "idle", modal: "unreadable", composer: "unknown" };
+    server.use(...sendHandler((request) => sendAnswer(request.id, "unknown", "no_evidence", { offers: ["keys"], surface: unreadable })));
+    localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ paneView: "raw" }));
+    mount("claude", undefined, unreadable);
+    const card = { name: "Collie cannot read this screen. You can." };
+    expect(screen.queryByRole("group", card)).toBeNull();
+
+    const user = userEvent.setup();
+    const box = await screen.findByPlaceholderText("Type a reply…");
+    const draft = "keep this draft";
+    await user.type(box, draft);
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(recordedSends()).toHaveLength(1));
+    await waitFor(() => expect(box).toHaveValue(draft));
+
+    expect(screen.queryByRole("group", card)).toBeNull();
+    expect(screen.queryByRole("group", { name: /Collie cannot tell/u })).toBeNull();
   });
 });
 

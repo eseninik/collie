@@ -566,6 +566,7 @@ export const fr: Dictionary = {
   "composer.protocol.typed": "Votre texte est dans le champ, mais Entrée n'a pas été pressée. Envoyez-le ou supprimez-le.",
   "composer.protocol.unconfirmed": "Collie ne peut pas lire cet écran. Vérifiez le volet, puis touchez Taper ici.",
   "composer.protocol.unconfirmedPast": "Collie ne peut pas lire cet écran. Vérifiez le volet, puis touchez Envoyer quand même.",
+  "composer.protocol.unconfirmedScreen": "Collie ne peut pas lire cet écran. Vérifiez l’écran ou ouvrez les touches.",
   "composer.protocol.alreadyTyped": "Ce texte était déjà dans la zone de l'agent, donc rien n'a été retapé. Appuyez sur Entrée avec les touches.",
   "composer.protocol.noticeKey": "Ce message répondrait à la notification au-dessus de la zone. Vérifiez le panneau, puis appuyez sur ‘Taper ici’.",
   "composer.protocol.noticeKeyPast": "Ce message répondrait à la notification au-dessus de la zone. Vérifiez le volet, puis touchez Envoyer quand même.",

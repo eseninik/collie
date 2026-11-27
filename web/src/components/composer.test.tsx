@@ -6698,7 +6698,7 @@ describe("the unread card (M102 spec 03)", () => {
       ),
     );
     const user = userEvent.setup();
-    const { handle } = renderUnread(null, { surface: shown });
+    const { handle } = renderUnread(null, { surface: shown, agent: "pi" });
     await user.type(screen.getByRole("textbox"), "carry on");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')?.textContent).toMatch(/Collie cannot read this screen\. Check the pane, then tap Send anyway\.$/u));
@@ -6729,7 +6729,7 @@ describe("the unread card (M102 spec 03)", () => {
       ),
     );
     const user = userEvent.setup();
-    renderUnread(null, { surface: manual });
+    renderUnread(null, { surface: manual, agent: "pi" });
     await user.type(screen.getByRole("textbox"), "carry on");
     await user.click(screen.getByRole("button", { name: "Send" }));
     const commit = await screen.findByRole("button", { name: "Send anyway" });
@@ -6773,7 +6773,7 @@ describe("the unread card (M102 spec 03)", () => {
       ),
     );
     const user = userEvent.setup();
-    renderUnread(null, { surface: stale });
+    renderUnread(null, { surface: stale, agent: "pi" });
     await user.type(screen.getByRole("textbox"), "carry on please");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await user.click(await screen.findByRole("button", { name: "Send anyway" }));

@@ -2612,21 +2612,26 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       }
       // A resend makes no offer: an offer would carry the row's text, which may be masked. A sign-in code
       // makes none either: an offer keeps the text for a later tap, and a code is never kept (the M102 review, A).
-      const directMessage = directMessages && mode === "send" && when !== "steer" && !secret && view === undefined;
+      const directSend = directMessages && mode === "send" && !secret && view === undefined;
+      const directMessage = directSend && when !== "steer";
       const tallDraft = directMessage && reply.outcome === "refused" && reply.reason === "draft_present" && reply.detail === TALL_DRAFT;
-      // An explicit override of an unread screen stays available; it is never an automatic recovery.
-      const manualOverride = reply.outcome === "refused" && reading.offers.includes("commit");
-      const offered = reading.offers.length > 0 && resend === undefined && !secret && (!directMessage || reading.cap !== null || manualOverride);
+      const offered = reading.offers.length > 0 && resend === undefined && !secret && (!directMessage || reading.cap !== null);
       setProtocolOffer(offered ? { text: t, isDraft, rowsHash: reply.rowsHash, offers: reading.offers, capAck: reading.cap !== null, draft: offerDraft(reply) } : null);
       // The revision the answer read: a Send again that waits for another send turns on once a later read differs.
       const hardStop = directMessage && reading.note === "typed" && (reply.reason === "modal_cue" || reading.toCard || reading.offers.length === 0 || reply.detail !== null);
       const recoveryNote = !hardStop && directMessage && reading.cap === null && (reading.note === "typed" || reading.note === "draft" || reading.note === "draftCommand" || reading.note === "unknown");
-      const refusal = { ...readingRefusal(hardStop ? { ...reading, note: "notFree" } : reading), atRevision: (reply.surface ?? shownSurface).revision };
-      // A screen Collie cannot read: the pane opens its card, with the person's Keys pad and "Type it
-      // anyway", instead of a sentence only (M102 spec 03).
-      // A not_free refusal now offers Send anyway (invariant I4), so its step is the offer; the card of a screen
-      // Collie cannot read opens for it all the same.
-      if (reading.step === "screen" || (reading.offers.includes("commit") && (reading.surface === "unknown" || reading.surface === "unreachable" || reading.surface === "unreadable"))) onScreenUnread?.(overridePasses(reply));
+      const refusal = { ...readingRefusal(reading, !directSend), atRevision: (reply.surface ?? shownSurface).revision };
+      // The bridge can stop before Enter while its last read still finds a normal input box.
+      // A direct send on that screen keeps its refusal notice and Keys beside the composer.
+      const readableBox = reply.surface?.modal === "none" && (reply.surface.composer === "empty" || reply.surface.composer === "draft");
+      const unreadSurface = reading.surface === "unknown" || reading.surface === "unreachable" || reading.surface === "unreadable";
+      const unreadOffer = unreadSurface && reading.offers.includes("commit");
+      // Keep the card for a refusal that used to offer a commit on an unreadable dialog.
+      const unreadDialog = directSend && reading.surface === "unreadable" && reply.outcome === "refused" &&
+        (reply.offers.includes("commit") || (reply.reason === "not_free" && reply.rowsHash !== null && reply.surface?.field !== "secret"));
+      if (!(directMessage && readableBox) && (reading.step === "screen" || unreadOffer || unreadDialog)) {
+        onScreenUnread?.(!directMessages && overridePasses(reply));
+      }
       // An override that met a menu, or whose text waits for the person's Enter (M102 spec 12): the Keys
       // pad opens, unless the person has a drawer open. A refused override carries the screen now and
       // its hash, so "Send past this screen" stays armed on the rows the card shows next.

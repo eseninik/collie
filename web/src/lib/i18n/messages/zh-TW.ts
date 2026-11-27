@@ -599,6 +599,7 @@ export const zhTW: Dictionary = {
   "composer.protocol.typed": "你的文字在輸入框中，但沒有按 Enter。請傳送或捨棄。",
   "composer.protocol.unconfirmed": "Collie 無法讀取此畫面。請檢查窗格，然後點按「在此輸入」。",
   "composer.protocol.unconfirmedPast": "Collie 無法讀取此畫面。請檢查窗格，然後點按「仍然傳送」。",
+  "composer.protocol.unconfirmedScreen": "Collie 無法讀取此畫面。請檢查螢幕或開啟按鍵。",
   "composer.protocol.alreadyTyped": "這段文字已經在代理的輸入框中，所以沒有再次輸入。請在按鍵面板上按 Enter。",
   "composer.protocol.noticeKey": "這則訊息會回答輸入框上方的提示。請檢查窗格，然後點按「在此輸入」。",
   "composer.protocol.noticeKeyPast": "這則訊息會回答輸入框上方的提示。請檢查窗格，然後點按「仍然傳送」。",

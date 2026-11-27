@@ -626,6 +626,7 @@ export const es: Dictionary = {
   "composer.protocol.typed": "Tu texto está en el cuadro, pero no se pulsó Intro. Envíalo o descártalo.",
   "composer.protocol.unconfirmed": "Collie no puede leer esta pantalla. Revisa el panel y toca Escribir aquí.",
   "composer.protocol.unconfirmedPast": "Collie no puede leer esta pantalla. Revisa el panel y luego toca Enviar de todos modos.",
+  "composer.protocol.unconfirmedScreen": "Collie no puede leer esta pantalla. Revisa la pantalla o abre Teclas.",
   "composer.protocol.alreadyTyped": "Este texto ya estaba en la caja del agente, así que no se volvió a escribir. Pulsa Intro en Teclas.",
   "composer.protocol.noticeKey": "Ese mensaje respondería al aviso situado encima del cuadro. Revise el panel y luego pulse ‘Escribir aquí’.",
   "composer.protocol.noticeKeyPast": "Ese mensaje respondería al aviso situado encima de la caja. Revisa el panel y luego toca Enviar de todos modos.",

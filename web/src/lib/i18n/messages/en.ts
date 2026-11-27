@@ -677,6 +677,7 @@ export const en = {
   "composer.protocol.unconfirmed": "Collie cannot read this screen. Check the pane, then tap Type here.",
   // The words before the tap promise nothing about Enter (the M102 review, pass 2): the receipt says what happened.
   "composer.protocol.unconfirmedPast": "Collie cannot read this screen. Check the pane, then tap Send anyway.",
+  "composer.protocol.unconfirmedScreen": "Collie cannot read this screen. Check the screen or open Keys.",
   "composer.protocol.alreadyTyped": "This text was already in the agent's box, so nothing was typed again. Press Enter on the Keys pad.",
   "composer.protocol.noticeKey": "That message would answer the notice above the box. Check the pane, then tap Type here.",
   "composer.protocol.noticeKeyPast": "That message would answer the notice above the box. Check the pane, then tap Send anyway.",

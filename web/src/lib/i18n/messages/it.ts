@@ -568,6 +568,7 @@ export const it: Dictionary = {
   "composer.protocol.typed": "Il tuo testo è nel campo, ma Invio non è stato premuto. Invialo o scartalo.",
   "composer.protocol.unconfirmed": "Collie non riesce a leggere questa schermata. Controlla il riquadro, poi tocca Scrivi qui.",
   "composer.protocol.unconfirmedPast": "Collie non riesce a leggere questa schermata. Controlla il riquadro, poi tocca Invia comunque.",
+  "composer.protocol.unconfirmedScreen": "Collie non riesce a leggere questa schermata. Controlla lo schermo o apri i tasti.",
   "composer.protocol.alreadyTyped": "Questo testo era già nella casella dell'agente, quindi non è stato digitato di nuovo. Premi Invio sui tasti.",
   "composer.protocol.noticeKey": "Quel messaggio risponderebbe all'avviso sopra la casella. Controlli il riquadro, quindi tocchi ‘Scrivi qui’.",
   "composer.protocol.noticeKeyPast": "Quel messaggio risponderebbe all'avviso sopra la casella. Controlla il riquadro, poi tocca Invia comunque.",

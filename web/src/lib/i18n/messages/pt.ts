@@ -564,6 +564,7 @@ export const pt: Dictionary = {
   "composer.protocol.typed": "Seu texto está na caixa, mas o Enter não foi pressionado. Envie ou descarte.",
   "composer.protocol.unconfirmed": "O Collie não consegue ler esta tela. Confira o painel e toque em Digitar aqui.",
   "composer.protocol.unconfirmedPast": "O Collie não consegue ler esta tela. Confira o painel e toque em Enviar mesmo assim.",
+  "composer.protocol.unconfirmedScreen": "O Collie não consegue ler esta tela. Confira a tela ou abra Teclas.",
   "composer.protocol.alreadyTyped": "Este texto já estava na caixa do agente, então nada foi digitado de novo. Pressione Enter em Teclas.",
   "composer.protocol.noticeKey": "Essa mensagem responderia ao aviso acima da caixa. Verifique o painel e toque em ‘Digitar aqui’.",
   "composer.protocol.noticeKeyPast": "Essa mensagem responderia ao aviso acima da caixa. Confira o painel e toque em Enviar mesmo assim.",

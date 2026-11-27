@@ -36,13 +36,15 @@ beforeEach(() => {
 const UNREAD: Surface = { revision: 7, turn: "idle", modal: "unreadable", composer: "unknown" };
 const FREE: Surface = { revision: 7, turn: "idle", modal: "none", composer: "empty" };
 const CAPTION = "Collie cannot read this screen. You can.";
+const PROFILES = ["muse", "claude"] as const;
+type Profile = (typeof PROFILES)[number];
 
 /** A screen Collie cannot read, under a spinner row whose timer and a clock row that tick. */
 function screenAt(seconds: number, clock: string): string {
   return ["Pick a mode for the lab run", "  > fast", "    careful", `✳ Wibbling… (${seconds}s · ↓ ${seconds * 10} tokens)`, `lab clock ${clock}`].join("\n");
 }
 
-function mount() {
+function mount(profile: Profile) {
   let show: (text: string, revision: number, surface?: Surface) => void = () => undefined;
   server.use(
     http.get(/\/api\/pane\/[^/]+$/, () => HttpResponse.json({ paneId: fixtureAgents[0]!.paneId, text: screenAt(4, "12:15:03"), truncated: false, revision: 7 })),
@@ -51,7 +53,7 @@ function mount() {
   function Harness() {
     const [pane, setPane] = useState<{ text: string; revision: number; surface: Surface }>({ text: screenAt(4, "12:15:03"), revision: 7, surface: UNREAD });
     show = (text, revision, surface = UNREAD) => act(() => setPane({ text, revision, surface }));
-    const agent: AgentView = { ...fixtureAgents[0]!, sendProtocol: true, surface: { ...pane.surface, revision: pane.revision } };
+    const agent: AgentView = { ...fixtureAgents[0]!, agent: profile, sendProtocol: true, surface: { ...pane.surface, revision: pane.revision } };
     return withHeaderHost(
       <AgentChat paneId={agent.paneId} agent={agent} agents={[agent]} shellPanes={[]} tabs={[]} text={pane.text} revision={pane.revision} onBack={vi.fn()} onSelect={vi.fn()} />,
     );
@@ -68,18 +70,24 @@ async function sendRefused() {
   await screen.findByText(CAPTION);
 }
 
-describe("AgentChat: the unread card a refusal opens (the M102 review, H; pass 2)", () => {
+function expectSendAnyway(profile: Profile) {
+  const action = document.querySelector('[data-slot="unread-dialog-type-anyway"]');
+  if (profile === "muse") expect(action).toHaveTextContent("Send anyway");
+  else expect(action).toBeNull();
+}
+
+describe.each(PROFILES)("AgentChat %s: the unread card a refusal opens @req:UNREAD-REWORK-LIFECYCLE @oracle:requirement", (profile) => {
   it("stays while the spinner's timer and a clock tick on the screen", async () => {
-    const m = mount();
+    const m = mount(profile);
     await sendRefused();
     m.show(screenAt(5, "12:15:04"), 8);
     m.show(screenAt(6, "12:15:05"), 9);
     expect(screen.getByText(CAPTION)).toBeInTheDocument();
-    expect(document.querySelector("[data-slot=\"unread-dialog-type-anyway\"]")).toHaveTextContent("Send anyway");
+    expectSendAnyway(profile);
   });
 
   it("goes when the pane is no longer unread: a later read the bridge can read", async () => {
-    const m = mount();
+    const m = mount(profile);
     await sendRefused();
     m.show(["The run is done.", "lab clock 12:15:09"].join("\n"), 8, FREE);
     await waitFor(() => expect(screen.queryByText(CAPTION)).toBeNull());
@@ -98,18 +106,18 @@ function movingScreen(tick: number): string {
   ].join("\n");
 }
 
-describe("AgentChat: the unread state, not the rows (the M102 review 2, H and I)", () => {
+describe.each(PROFILES)("AgentChat %s: the unread state, not the rows @req:UNREAD-REWORK-LIFECYCLE @oracle:requirement", (profile) => {
   it("the card stays while a progress bar, a dot cycle and streaming text change every row, and with new revisions", async () => {
-    const m = mount();
+    const m = mount(profile);
     await sendRefused();
     for (let tick = 1; tick <= 6; tick++) m.show(movingScreen(tick), 7 + tick);
     expect(screen.getByText(CAPTION)).toBeInTheDocument();
-    expect(document.querySelector("[data-slot=\"unread-dialog-type-anyway\"]")).toHaveTextContent("Send anyway");
+    expectSendAnyway(profile);
   });
 
   it("the Keys drawer the person closed stays closed while the rows move, until the unread state ends", async () => {
     const user = userEvent.setup();
-    const m = mount();
+    const m = mount(profile);
     await sendRefused();
     const keys = screen.getByRole("button", { name: "Keys" });
     await waitFor(() => expect(keys).toHaveAttribute("aria-expanded", "true"));

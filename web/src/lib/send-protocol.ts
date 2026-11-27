@@ -628,19 +628,20 @@ function surfaceAfter(reply: SendReply, note: SurfaceNote): SurfaceNote | null {
  * refused it), so an override would type it a second time. A commit is always sent with `override`, so
  * a Submit's answer carries no commit at all, not even one the bridge offered.
  */
-function withOverride(reply: SendReply, offers: readonly SendOffer[], mode: SendMode): readonly SendOffer[] {
-  if (mode === "submit") return offers.filter((offer) => offer !== "commit");
+function withOverride(reply: SendReply, offers: readonly SendOffer[], mode: SendMode, allowOverride: boolean): readonly SendOffer[] {
+  if (mode === "submit" || (!allowOverride && reply.cap === null)) return offers.filter((offer) => offer !== "commit");
   if (reply.outcome !== "refused" || reply.reason !== "not_free" || reply.rowsHash === null || reply.surface === null) return offers;
   if (reply.surface.field === "secret" || askOf(reply.surface.modal) !== null || offers.includes("commit")) return offers;
   return [...offers, "commit"];
 }
 
-/** What an answer means. `mode` is the request's: a Submit's answer never offers the override. */
-export function readSend(reply: SendReply, mode: SendMode = "send"): SendReading {
+/** What an answer means. Direct profiles disable the ordinary screen override and keep the cap confirmation. */
+export function readSend(reply: SendReply, mode: SendMode = "send", allowOverride = true): SendReading {
   const offers = withOverride(
     reply,
     reply.offers.filter((offer) => offer !== "keys"),
     mode,
+    allowOverride,
   );
   const base = noteAndOffers(reply, offers);
   const surface = base.clear || reply.surface === null ? null : surfaceAfter(reply, surfaceNote(reply.surface));

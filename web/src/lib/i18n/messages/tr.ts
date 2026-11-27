@@ -564,6 +564,7 @@ export const tr: Dictionary = {
   "composer.protocol.typed": "Metnin kutuda, ama Enter'a basılmadı. Gönder veya at.",
   "composer.protocol.unconfirmed": "Collie bu ekranı okuyamıyor. Bölmeyi kontrol et, sonra Buraya yaz'a dokun.",
   "composer.protocol.unconfirmedPast": "Collie bu ekranı okuyamıyor. Bölmeyi kontrol edin, sonra Yine de gönder'e dokunun.",
+  "composer.protocol.unconfirmedScreen": "Collie bu ekranı okuyamıyor. Ekranı kontrol edin veya Tuşları açın.",
   "composer.protocol.alreadyTyped": "Bu metin zaten ajanın kutusundaydı, bu yüzden tekrar yazılmadı. Tuşlar'dan Enter'a basın.",
   "composer.protocol.noticeKey": "Bu ileti kutunun üstündeki bildirimi yanıtlar. Bölmeyi kontrol et, ardından Buraya yaz ögesine dokun.",
   "composer.protocol.noticeKeyPast": "Bu ileti kutunun üstündeki bildirimi yanıtlamış olurdu. Bölmeyi kontrol edin, sonra Yine de gönder'e dokunun.",

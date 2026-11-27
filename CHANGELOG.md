@@ -85,6 +85,12 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **A new phone reply replaces Collie's own scrolled Claude draft.** If a draft from the terminal is too tall for Collie to read in full, the phone explains why the send stopped and offers to open Keys.
 
+- **A stopped phone send keeps a readable Claude screen in Chat.** When Collie can still read the input box, it shows the send result beside the reply field. If Claude or Codex shows an unread dialog, use Keys to act on it.
+
+- **Slash commands keep their own confirmation.** An ordinary Claude or Codex reply uses direct sending. A slash command can still ask you to confirm before it goes.
+
+- **Direct Claude and Codex refusals point to the screen.** Use Keys to check a stopped send. The option to steer a running turn follows the same rule, and an unverified delivery keeps your draft without opening the unread-screen card.
+
 ## [1.30.1] - 2026-11-25
 
 ### Changed

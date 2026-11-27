@@ -600,6 +600,7 @@ export const zh: Dictionary = {
   "composer.protocol.typed": "你的文本在输入框中，但没有按 Enter。请发送或丢弃。",
   "composer.protocol.unconfirmed": "Collie 无法读取此屏幕。请检查窗格，然后点按“在此输入”。",
   "composer.protocol.unconfirmedPast": "Collie 无法读取此屏幕。请检查窗格，然后点按“仍然发送”。",
+  "composer.protocol.unconfirmedScreen": "Collie 无法读取此屏幕。请检查屏幕或打开按键。",
   "composer.protocol.alreadyTyped": "这段文字已经在代理的输入框中，所以没有再次输入。请在按键面板上按 Enter。",
   "composer.protocol.noticeKey": "这条消息会回答输入框上方的提示。请检查窗格，然后点按“在此输入”。",
   "composer.protocol.noticeKeyPast": "这条消息会回答输入框上方的提示。请检查窗格，然后点按“仍然发送”。",
