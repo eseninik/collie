@@ -91,6 +91,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **Direct Claude and Codex refusals point to the screen.** Use Keys to check a stopped send. The option to steer a running turn follows the same rule, and an unverified delivery keeps your draft without opening the unread-screen card.
 
+- **Stopped sends name the actions available on the phone.** When steering leaves text in the input box, the notice points to Submit and Discard if both buttons are shown. A refused Submit on a returned message points to the screen or Keys.
+
+- **Returned messages keep their Submit and Discard instructions.** When Submit leaves text in the agent's box, the status points to the actions on the returned message.
+
 ## [1.30.1] - 2026-11-25
 
 ### Changed

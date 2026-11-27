@@ -270,6 +270,29 @@ describe("direct-send refusals", () => {
     expect(sends).toHaveLength(1);
     expect(sends[0]).toMatchObject({ when: "steer", mode: "send", text: draft });
   });
+
+  it.each(["claude", "codex"] as const)("%s names the visible Submit and Discard after a steer types without submitting @req:REQ-STEER-TYPED @oracle:requirement", async (agent) => {
+    const user = userEvent.setup();
+    const running = { revision: 1, turn: "running", modal: "none", composer: "empty" } as const;
+    const sends = bridge([{
+      ...reply("typed_not_submitted", "changed", ["submit", "discard", "keys"]),
+      surface: { ...running, revision: 2, composer: "draft" },
+    }]);
+    renderComposer(agent, { surface: running, canSteer: true });
+    const draft = "try another route";
+    await user.type(screen.getByRole("textbox"), draft);
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Send" }));
+    await user.click(await screen.findByRole("button", { name: "Steer: the agent takes it after its current step" }));
+
+    expect(await screen.findByRole("button", { name: /^Submit(?: the text in the box)?$/iu })).toBeVisible();
+    expect(screen.getByRole("button", { name: /^Discard(?: the text in the box)?$/iu })).toBeVisible();
+    const refusal = document.querySelector('[data-slot="composer-refusal"]');
+    expect(refusal).toBeVisible();
+    expect(refusal).toHaveTextContent(/submit it or discard it/iu);
+    expect(refusal).not.toHaveTextContent(/before sending it again/iu);
+    expect(sends).toHaveLength(1);
+    expect(sends[0]).toMatchObject({ when: "steer", mode: "send", text: draft });
+  });
 });
 
 describe("@req:COLLIE-1291-SOFT-DIRECT-ENTER @oracle:requirement Composer Enter", () => {

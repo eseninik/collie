@@ -36,19 +36,18 @@ beforeEach(() => {
 const UNREAD: Surface = { revision: 7, turn: "idle", modal: "unreadable", composer: "unknown" };
 const FREE: Surface = { revision: 7, turn: "idle", modal: "none", composer: "empty" };
 const CAPTION = "Collie cannot read this screen. You can.";
-const PROFILES = ["muse", "claude"] as const;
-type Profile = (typeof PROFILES)[number];
+type Profile = "muse" | "claude";
 
 /** A screen Collie cannot read, under a spinner row whose timer and a clock row that tick. */
 function screenAt(seconds: number, clock: string): string {
   return ["Pick a mode for the lab run", "  > fast", "    careful", `✳ Wibbling… (${seconds}s · ↓ ${seconds * 10} tokens)`, `lab clock ${clock}`].join("\n");
 }
 
-function mount(profile: Profile) {
+function mount(profile: Profile, refusal?: Parameters<typeof sendHandler>[0]) {
   let show: (text: string, revision: number, surface?: Surface) => void = () => undefined;
   server.use(
     http.get(/\/api\/pane\/[^/]+$/, () => HttpResponse.json({ paneId: fixtureAgents[0]!.paneId, text: screenAt(4, "12:15:03"), truncated: false, revision: 7 })),
-    ...sendHandler((request) => sendAnswer(request.id, "refused", "not_free", { offers: ["keys"], rowsHash: "ab12cd", surface: UNREAD })),
+    ...sendHandler(refusal ?? ((request) => sendAnswer(request.id, "refused", "not_free", { offers: ["keys"], rowsHash: "ab12cd", surface: UNREAD }))),
   );
   function Harness() {
     const [pane, setPane] = useState<{ text: string; revision: number; surface: Surface }>({ text: screenAt(4, "12:15:03"), revision: 7, surface: UNREAD });
@@ -62,11 +61,15 @@ function mount(profile: Profile) {
   return { show: (text: string, revision: number, surface?: Surface) => show(text, revision, surface) };
 }
 
-async function sendRefused() {
+async function sendReply() {
   const user = userEvent.setup();
   await user.type(await screen.findByPlaceholderText(/type a reply/i), "go on");
   await user.click(screen.getByRole("button", { name: "Send" }));
   await waitFor(() => expect(recordedSends()).toHaveLength(1));
+}
+
+async function sendRefused() {
+  await sendReply();
   await screen.findByText(CAPTION);
 }
 
@@ -76,7 +79,10 @@ function expectSendAnyway(profile: Profile) {
   else expect(action).toBeNull();
 }
 
-describe.each(PROFILES)("AgentChat %s: the unread card a refusal opens @req:UNREAD-REWORK-LIFECYCLE @oracle:requirement", (profile) => {
+describe.each([
+  { profile: "muse", title: "AgentChat: the unread card a refusal opens (the M102 review, H; pass 2)" },
+  { profile: "claude", title: "AgentChat claude: the unread card a refusal opens @req:UNREAD-REWORK-LIFECYCLE @oracle:requirement" },
+] as const)("$title", ({ profile }) => {
   it("stays while the spinner's timer and a clock tick on the screen", async () => {
     const m = mount(profile);
     await sendRefused();
@@ -106,7 +112,10 @@ function movingScreen(tick: number): string {
   ].join("\n");
 }
 
-describe.each(PROFILES)("AgentChat %s: the unread state, not the rows @req:UNREAD-REWORK-LIFECYCLE @oracle:requirement", (profile) => {
+describe.each([
+  { profile: "muse", title: "AgentChat: the unread state, not the rows (the M102 review 2, H and I)" },
+  { profile: "claude", title: "AgentChat claude: the unread state, not the rows @req:UNREAD-REWORK-LIFECYCLE @oracle:requirement" },
+] as const)("$title", ({ profile }) => {
   it("the card stays while a progress bar, a dot cycle and streaming text change every row, and with new revisions", async () => {
     const m = mount(profile);
     await sendRefused();
@@ -125,5 +134,34 @@ describe.each(PROFILES)("AgentChat %s: the unread state, not the rows @req:UNREA
     await waitFor(() => expect(keys).toHaveAttribute("aria-expanded", "false"));
     for (let tick = 1; tick <= 6; tick++) m.show(movingScreen(tick), 7 + tick);
     expect(keys).toHaveAttribute("aria-expanded", "false");
+  });
+});
+
+describe("AgentChat Claude on unreadable send refusals", () => {
+  it("shows the unread card without Send anyway on refused unconfirmed with commit and keys @req:REQ-UNREAD-COMMIT @oracle:requirement", async () => {
+    mount("claude", (request) => sendAnswer(request.id, "refused", "unconfirmed", {
+      offers: ["commit", "keys"], rowsHash: "ab12cd", surface: UNREAD,
+    }));
+    const card = { name: CAPTION };
+    expect(screen.queryByRole("group", card)).toBeNull();
+    await sendReply();
+    expect(await screen.findByRole("group", card)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Keys" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Send anyway" })).toBeNull();
+    expectSendAnyway("claude");
+  });
+
+  it("does not open the unread card on not free with a rows hash and a secret field @req:REQ-UNREAD-SECRET @oracle:requirement", async () => {
+    mount("claude", (request) => sendAnswer(request.id, "refused", "not_free", {
+      offers: ["keys"],
+      rowsHash: "ab12cd",
+      surface: { ...UNREAD, revision: UNREAD.revision + 1, field: "secret" },
+    }));
+    const card = { name: CAPTION };
+    expect(screen.queryByRole("group", card)).toBeNull();
+    await sendReply();
+    await waitFor(() => expect(document.querySelector('[data-slot="composer-refusal"]')).toHaveTextContent(/input box is not free/iu));
+    expect(screen.queryByRole("group", card)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Send anyway" })).toBeNull();
   });
 });

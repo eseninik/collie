@@ -2286,10 +2286,10 @@ export function AgentChat({
         revalidator.revalidate();
         return true;
       }
-      setStatus(readingRefusal(result.reading, !directMessages).sentence, "error");
+      setStatus(readingRefusal(result.reading, result.reading.note !== "unconfirmed").sentence, "error");
       return false;
     },
-    [refuseWrite, paneId, scope, revalidator, directMessages],
+    [refuseWrite, paneId, scope, revalidator],
   );
 
   // NOTE: the composer is deliberately NOT auto-focused on open/switch — that would pop the Android

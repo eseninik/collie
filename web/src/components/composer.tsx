@@ -2620,7 +2620,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       // The revision the answer read: a Send again that waits for another send turns on once a later read differs.
       const hardStop = directMessage && reading.note === "typed" && (reply.reason === "modal_cue" || reading.toCard || reading.offers.length === 0 || reply.detail !== null);
       const recoveryNote = !hardStop && directMessage && reading.cap === null && (reading.note === "typed" || reading.note === "draft" || reading.note === "draftCommand" || reading.note === "unknown");
-      const refusal = { ...readingRefusal(reading, !directSend), atRevision: (reply.surface ?? shownSurface).revision };
+      const showsTypedActions = offered && reading.note === "typed" && reading.offers.includes("submit") && reading.offers.includes("discard");
+      const refusal = { ...readingRefusal(reading, !directSend || showsTypedActions), atRevision: (reply.surface ?? shownSurface).revision };
       // The bridge can stop before Enter while its last read still finds a normal input box.
       // A direct send on that screen keeps its refusal notice and Keys beside the composer.
       const readableBox = reply.surface?.modal === "none" && (reply.surface.composer === "empty" || reply.surface.composer === "draft");
